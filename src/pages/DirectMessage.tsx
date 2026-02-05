@@ -1,11 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import { playNotificationSound } from '@/lib/utils'
 
 const SOCKET_URL = "http://localhost:9000";
 
 interface IMessage {
   from: string;
+  to?: string;
   fromName?: string;
   content?: string;
   file?: {
@@ -29,6 +31,8 @@ const DirectMessage = () => {
   const [file, setFile] = useState<File | null>(null);
   const [chatUser, setChatUser] = useState<IUser | null>(null);
   const [members, setMembers] = useState<IUser[]>([]);
+  const [onlineIds, setOnlineIds] = useState<string[]>([]);
+  const [lastSeenMap, setLastSeenMap] = useState<Record<string, number>>({});
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -57,6 +61,47 @@ const DirectMessage = () => {
 
     socket.on("private message", (msg: IMessage) => {
       setMessages((prev) => [...prev, msg]);
+      // play sound for incoming messages that are not sent by me
+      try {
+        const toId = String(msg.to || "")
+        const fromId = String(msg.from || "")
+        if (toId && fromId && toId === String(myId) && fromId !== String(myId)) {
+          playNotificationSound()
+        }
+      } catch (e) {}
+    });
+
+    socket.on('online-list', (payload: any) => {
+      try {
+        if (payload && Array.isArray(payload.online)) {
+          setOnlineIds(payload.online.map(String));
+        } else if (Array.isArray(payload)) {
+          setOnlineIds(payload.map(String));
+        }
+        if (payload && payload.lastSeen) {
+          setLastSeenMap(Object.fromEntries(Object.entries(payload.lastSeen).map(([k, v]) => [String(k), Number(v)])));
+        }
+      } catch (e) {}
+    });
+
+    socket.on('user-online', (id: string) => {
+      setOnlineIds((prev) => {
+        if (!prev.includes(String(id))) return [String(id), ...prev];
+        return prev;
+      });
+      setLastSeenMap((m) => {
+        const copy = { ...m };
+        delete copy[String(id)];
+        return copy;
+      });
+    });
+
+    socket.on('user-offline', (payload: any) => {
+      // payload may be { id, lastSeen }
+      const id = payload?.id || payload
+      const ts = payload?.lastSeen || Date.now()
+      setOnlineIds((prev) => prev.filter((x) => x !== String(id)));
+      setLastSeenMap((m) => ({ ...(m || {}), [String(id)]: Number(ts) }));
     });
 
     return () => {
@@ -159,28 +204,34 @@ const DirectMessage = () => {
         to: userId,
       };
 
+      // emit to server and rely on server to echo back the message to sender
       socketRef.current.emit("private message", payload);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          from: me.id || me._id,
-          fromName: me.name,
-          content: payload.content,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
-
+      // clear input — do not append locally to avoid duplicate when server echoes
       setText("");
     }
   };
 
   /* ================= UI ================= */
 
+  function timeAgo(timestamp: number) {
+    try {
+      const diff = Date.now() - Number(timestamp)
+      const s = Math.floor(diff / 1000)
+      if (s < 60) return `${s}s ago`
+      const m = Math.floor(s / 60)
+      if (m < 60) return `${m}m ago`
+      const h = Math.floor(m / 60)
+      if (h < 24) return `${h}h ago`
+      const d = Math.floor(h / 24)
+      return `${d}d ago`
+    } catch (e) { return 'some time ago' }
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-900 text-white p-4">
+      <div className="w-64 bg-gray-900 text-white p-4 relative">
         <h2 className="text-2xl font-bold mb-8">Slack Clone</h2>
 
         <h3 className="text-sm font-semibold text-gray-400 mb-4">
@@ -191,24 +242,59 @@ const DirectMessage = () => {
           <button
             key={m._id}
             onClick={() => navigate(`/dm/${m._id}`)}
-            className={`w-full text-left px-3 py-2 rounded mb-1 ${
+            className={`w-full text-left px-3 py-2 rounded mb-1 flex items-center justify-between ${
               m._id === userId
                 ? "bg-purple-600 text-white"
                 : "hover:bg-gray-800"
             }`}
           >
-            {m.name}
+            <div className="flex items-center gap-3">
+              <span className="font-medium">{m.name}</span>
+              {onlineIds.includes(String(m._id)) ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full" aria-hidden title="Active now" />
+                  <span className="text-xs text-green-300">Active now</span>
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400" title={lastSeenMap[String(m._id)] ? `Last seen ${timeAgo(lastSeenMap[String(m._id)])}` : 'Offline'}>
+                  {lastSeenMap[String(m._id)] ? `Last seen ${timeAgo(lastSeenMap[String(m._id)])}` : 'Offline'}
+                </span>
+              )}
+            </div>
+            
           </button>
         ))}
+
+        <div className="absolute bottom-4 left-4 right-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full flex items-center gap-2 justify-center px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+            aria-label="Go to Dashboard"
+            title="Dashboard"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21v-7a2 2 0 00-2-2H7a2 2 0 00-2 2v7" />
+            </svg>
+            <span>Dashboard</span>
+          </button>
+        </div>
       </div>
 
       {/* Chat Section */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 p-4">
-          <h1 className="text-2xl font-bold text-gray-800">
-            {chatUser?.name || "Chat"}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-800">
+              {chatUser?.name || "Chat"}
+            </h1>
+            {chatUser && onlineIds.includes(String(chatUser._id)) ? (
+              <span className="inline-flex items-center gap-2 text-sm text-green-600" title="Active now">● Online</span>
+            ) : chatUser && lastSeenMap[String(chatUser._id)] ? (
+              <span className="inline-flex items-center gap-2 text-sm text-gray-500" title={`Last seen ${timeAgo(lastSeenMap[String(chatUser._id)])}`}>Last seen {timeAgo(lastSeenMap[String(chatUser._id)])}</span>
+            ) : null}
+          </div>
         </div>
 
         {/* Messages */}

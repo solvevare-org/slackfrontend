@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+
 const Admin = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -10,6 +11,8 @@ const Admin = () => {
   const [message, setMessage] = useState('')
   const [previewLink, setPreviewLink] = useState('')
   const [showSocial, setShowSocial] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
+  const [popupText, setPopupText] = useState('')
 
   const handleInvite = async () => {
     setMessage('')
@@ -22,7 +25,16 @@ const Admin = () => {
       })
       const data = await res.json()
       if (!res.ok) setMessage(data.msg || 'Invite failed')
-      else setMessage(`Invite sent. Link: ${data.link}`)
+      else {
+        setMessage(`Invite sent. Link: ${data.link}`)
+        const text = `Confirmation: Email has been sent to ${email || 'the user'}`
+        setPopupText(text)
+        setShowPopup(true)
+        setTimeout(() => {
+          setShowPopup(false)
+          navigate('/dashboard')
+        }, 3000)
+      }
     } catch (e) {
       setMessage('Server error')
     }
@@ -80,6 +92,18 @@ const Admin = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
+      {showPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black opacity-40" onClick={() => setShowPopup(false)} />
+          <div className="bg-white rounded-lg shadow-lg p-6 z-10 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-800">Email Sent</h3>
+            <p className="text-sm text-gray-600 mt-2">{popupText}</p>
+            <div className="mt-4 flex justify-end">
+              <Button onClick={() => setShowPopup(false)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow p-6">
           <h1 className="text-3xl font-bold text-gray-800 mb-4">Admin Dashboard</h1>

@@ -24,6 +24,9 @@ const Dashboard = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showShareOptions, setShowShareOptions] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const plusRef = useRef<HTMLDivElement | null>(null);
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
 
   const roleStr = (user?.role || user?.Role || "").toLowerCase();
   const isAdmin = roleStr === "admin";
@@ -104,6 +107,30 @@ const Dashboard = () => {
       socket.disconnect();
     };
   }, [location.pathname]);
+
+  // close plus menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!plusRef.current) return
+      if (!(e.target instanceof Node)) return
+      if (!plusRef.current.contains(e.target)) setShowPlusMenu(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // fetch user's groups and communities for workspaces
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    const fetchGroups = fetch('http://localhost:9000/api/group/me', { headers: { Authorization: `Bearer ${token}` } }).then(r=>r.json())
+    const fetchCommunities = fetch('http://localhost:9000/api/community/me', { headers: { Authorization: `Bearer ${token}` } }).then(r=>r.json())
+    Promise.all([fetchGroups, fetchCommunities]).then(([gRes, cRes]) => {
+      const groups = Array.isArray(gRes?.groups) ? gRes.groups : []
+      const comm = Array.isArray(cRes?.groups) ? cRes.groups : []
+      setWorkspaces([...groups, ...comm])
+    }).catch(() => {})
+  }, [])
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -209,7 +236,42 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {isAdmin && <Button onClick={() => navigate('/admin')}>Admin</Button>}
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <div className="relative" ref={plusRef}>
+                      <button
+                        aria-label="Create"
+                        title="Create"
+                        onClick={(e) => { e.stopPropagation(); setShowPlusMenu(s => !s); }}
+                        className="p-2 rounded hover:bg-purple-700 text-white flex items-center justify-center"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <circle cx="12" cy="12" r="10" strokeWidth="1.5" className="text-white/80" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v8M8 12h8" />
+                        </svg>
+                      </button>
+
+                      {showPlusMenu && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white text-gray-800 rounded shadow-lg z-50 p-2">
+                          <button onClick={() => { setShowPlusMenu(false); navigate('/create-group'); }} className="w-full text-left p-2 hover:bg-gray-100 rounded flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9 6 9-6" />
+                            </svg>
+                            Create Group
+                          </button>
+
+                          <button onClick={() => { setShowPlusMenu(false); navigate('/create-community'); }} className="w-full text-left p-2 hover:bg-gray-100 rounded flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2a10 10 0 100 20 10 10 0 000-20zM2 12h20" />
+                            </svg>
+                            Create Community
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <Button onClick={() => navigate('/admin')}>Admin</Button>
+                  </div>
+                )}
               </div>
           </div>
         </div>
@@ -224,27 +286,22 @@ const Dashboard = () => {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-white p-3 rounded shadow-sm">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-teal-400 rounded flex items-center justify-center text-white font-bold">SV</div>
-                      <div>
-                        <div className="font-semibold">SolveVare</div>
-                        <div className="text-xs text-gray-500">24 members • Last active</div>
+                  {workspaces.length === 0 ? (
+                    <div className="text-sm text-gray-500">No workspaces yet. Create one to get started.</div>
+                  ) : (
+                    workspaces.map((w: any) => (
+                      <div key={w._id} className="flex items-center justify-between bg-white p-3 rounded shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-teal-400 rounded flex items-center justify-center text-white font-bold">{(w.name || '').slice(0,2).toUpperCase()}</div>
+                          <div>
+                            <div className="font-semibold">{w.name}</div>
+                            <div className="text-xs text-gray-500">{(w.members || []).length} members</div>
+                          </div>
+                        </div>
+                        <button onClick={() => navigate(`/group/${w._id}`)} className="text-gray-500">→</button>
                       </div>
-                    </div>
-                    <button onClick={() => navigate('/workspace/solvevare')} className="text-gray-500">→</button>
-                  </div>
-
-                  <div className="flex items-center justify-between bg-white p-3 rounded shadow-sm">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-green-300 rounded flex items-center justify-center text-white font-bold">AR</div>
-                      <div>
-                        <div className="font-semibold">AR</div>
-                        <div className="text-xs text-gray-500">0 members</div>
-                      </div>
-                    </div>
-                    <button onClick={() => navigate('/workspace/ar')} className="text-gray-500">→</button>
-                  </div>
+                    ))
+                  )}
                 </div>
 
                 <div className="mt-4">

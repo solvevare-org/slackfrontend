@@ -1,0 +1,179 @@
+import { useEffect, useState, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { io, Socket } from 'socket.io-client'
+import { playNotificationSound } from '@/lib/utils'
+
+interface IMessage { from: string; fromName?: string; content?: string; file?: any; createdAt?: string; }
+interface IUser { _id: string; name?: string }
+interface IGroup { _id: string; name: string; type?: string; members?: IUser[] }
+
+const SOCKET_URL = 'http://localhost:9000'
+
+const GroupChat = () => {
+  const { groupId } = useParams<{ groupId: string }>()
+  const navigate = useNavigate()
+  const [group, setGroup] = useState<IGroup | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [messages, setMessages] = useState<IMessage[]>([])
+  const [text, setText] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const socketRef = useRef<Socket | null>(null)
+  const [onlineIds, setOnlineIds] = useState<string[]>([])
+  const [lastSeenMap, setLastSeenMap] = useState<Record<string, number>>({})
+
+  const myId = (() => {
+    try { const raw = localStorage.getItem('user'); const me = raw ? JSON.parse(raw) : {}; return me.id || me._id || '' } catch { return '' }
+  })()
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) { navigate('/login'); return }
+
+    const socket = io(SOCKET_URL, { auth: { token } })
+    socketRef.current = socket
+
+    socket.on('group message', (msg: any) => {
+      if (!msg) return
+      setMessages(prev => [...prev, msg])
+      try {
+        if (String(msg.from) !== String(myId)) playNotificationSound()
+      } catch (e) {}
+    })
+
+    socket.on('online-list', (payload: any) => {
+      try {
+        if (payload && Array.isArray(payload.online)) setOnlineIds(payload.online.map(String))
+        else if (Array.isArray(payload)) setOnlineIds(payload.map(String))
+        if (payload && payload.lastSeen) setLastSeenMap(Object.fromEntries(Object.entries(payload.lastSeen).map(([k,v])=>[String(k), Number(v)])))
+      } catch (e) {}
+    })
+
+    socket.on('user-online', (id: string) => {
+      setOnlineIds(prev => prev.includes(String(id)) ? prev : [String(id), ...prev])
+      setLastSeenMap(m => { const copy = { ...m }; delete copy[String(id)]; return copy })
+    })
+
+    socket.on('user-offline', (payload: any) => {
+      const id = payload?.id || payload
+      const ts = payload?.lastSeen || Date.now()
+      setOnlineIds(prev => prev.filter(x => x !== String(id)))
+      setLastSeenMap(m => ({ ...(m||{}), [String(id)]: Number(ts) }))
+    })
+
+    return () => { socket.disconnect() }
+  }, [navigate, myId])
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token || !groupId) return
+
+    fetch(`http://localhost:9000/api/group/${groupId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => { if (d?.group) setGroup(d.group) })
+      .catch(() => {})
+
+    fetch(`http://localhost:9000/api/group/${groupId}/messages`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => { if (Array.isArray(d?.messages)) setMessages(d.messages) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [groupId])
+
+  // join the group room when socket is ready
+  useEffect(() => {
+    if (!socketRef.current || !groupId) return
+    try { socketRef.current.emit('join group', groupId) } catch (e) {}
+  }, [groupId])
+
+  const sendMessage = async () => {
+    if (!socketRef.current || !groupId) return
+
+    const token = localStorage.getItem('token')
+
+    // file upload
+    if (file && token) {
+      if (file.size > 10 * 1024 * 1024) { alert('File too large (max 10MB)'); return }
+      const fd = new FormData(); fd.append('file', file); fd.append('group', groupId)
+      try {
+        const res = await fetch(`http://localhost:9000/api/group/${groupId}/upload`, { method: 'POST', body: fd, headers: { Authorization: `Bearer ${token}` } })
+        const data = await res.json()
+        if (data?.message) {
+          // message will be emitted by server to room; no local append
+        }
+      } catch (e) {}
+      setFile(null)
+    }
+
+    if (text.trim()) {
+      socketRef.current.emit('group message', { content: text.trim(), group: groupId })
+      setText('')
+    }
+  }
+
+  function timeAgo(timestamp: number) {
+    try { const diff = Date.now() - Number(timestamp); const s = Math.floor(diff/1000); if (s<60) return `${s}s ago`; const m=Math.floor(s/60); if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; const d=Math.floor(h/24); return `${d}d ago` } catch(e){return 'some time ago'}
+  }
+
+  if (loading) return <div className="p-8">Loading...</div>
+  if (!group) return <div className="p-8">Group not found</div>
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Members Sidebar */}
+      <div className="w-64 bg-gray-900 text-white p-4 relative">
+        <h2 className="text-2xl font-bold mb-4">Slack Clone</h2>
+        <h3 className="text-sm font-semibold text-gray-400 mb-4">{group.type === 'community' ? 'Community Members' : 'Group Members'}</h3>
+        {(group.members || []).map((m:any) => (
+          <div key={m._id} className={`w-full text-left px-3 py-2 rounded mb-1 flex items-center justify-between ${String(m._id) === '' ? 'hover:bg-gray-800':''}`}>
+            <div className="flex items-center gap-3">
+              <span className="font-medium">{m.name}</span>
+              {onlineIds.includes(String(m._id)) ? (
+                <span className="text-xs text-green-300">Active now</span>
+              ) : (
+                <span className="text-xs text-gray-400" title={lastSeenMap[String(m._id)] ? `Last seen ${timeAgo(lastSeenMap[String(m._id)])}` : 'Offline'}>
+                  {lastSeenMap[String(m._id)] ? `Last seen ${timeAgo(lastSeenMap[String(m._id)])}` : 'Offline'}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+
+        <div className="absolute bottom-4 left-4 right-4">
+          <button onClick={() => navigate('/dashboard')} className="w-full flex items-center gap-2 justify-center px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm" aria-label="Go to Dashboard" title="Dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21v-7a2 2 0 00-2-2H7a2 2 0 00-2 2v7" /></svg>
+            <span>Dashboard</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Chat Section */}
+      <div className="flex-1 flex flex-col">
+        <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">{group.name}</h1>
+            <div className="text-xs text-gray-500">{(group.members || []).length} members</div>
+          </div>
+          <div className="text-sm text-gray-600">{group.type === 'community' ? 'Community' : 'Group'}</div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
+          {messages.length === 0 && <p className="text-gray-500 text-center">Start the conversation...</p>}
+          {messages.map((m, idx) => (
+            <div key={idx} className={`max-w-md p-3 rounded-lg ${m.from === myId ? 'bg-purple-200 self-end' : 'bg-gray-200 self-start'}`}>
+              <div className="text-xs text-gray-600">{m.fromName || m.from}</div>
+              {m.content && <div className="text-sm text-gray-800">{m.content}</div>}
+              {m.file?.url && <a href={m.file.url} target="_blank" rel="noreferrer" className="text-indigo-600 underline text-sm">{m.file.filename || 'Attachment'}</a>}
+              <div className="text-xs text-gray-400 mt-1">{m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white border-t border-gray-200 p-4 flex gap-2">
+          <input type="text" value={text} onChange={(e)=>setText(e.target.value)} onKeyDown={(e)=>e.key==='Enter' && sendMessage()} placeholder="Type a message..." className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-600" />
+          <input type="file" onChange={(e)=>setFile(e.target.files ? e.target.files[0] : null)} className="text-sm" />
+          <button onClick={sendMessage} className="px-4 py-2 bg-purple-600 text-white rounded-lg">Send</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default GroupChat

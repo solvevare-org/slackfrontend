@@ -5,6 +5,9 @@ import ChannelPage from './pages/ChannelPage'
 import DirectMessage from './pages/DirectMessage'
 import ProjectPage from './pages/ProjectPage'
 import Admin from './pages/Admin'
+import CreateGroup from './pages/CreateGroup'
+import CreateCommunity from './pages/CreateCommunity'
+import GroupChat from './pages/GroupChat'
 import Signup from './pages/Signup'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
@@ -50,6 +53,30 @@ const App = () => {
           element={
             <ProtectedRoute requiredRole="admin">
               <Admin />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-group"
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <CreateGroup />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-community"
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <CreateCommunity />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/group/:groupId"
+          element={
+            <ProtectedRoute>
+              <GroupChat />
             </ProtectedRoute>
           }
         />

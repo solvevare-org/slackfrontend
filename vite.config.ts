@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   server: {
+    port: 6007,
     allowedHosts: [
       "d62c-2407-aa80-14-4908-dd84-c434-3aac-9cf6.ngrok-free.app",
       "localhost",

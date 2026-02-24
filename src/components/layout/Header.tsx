@@ -96,7 +96,7 @@ const Header: React.FC = () => {
       try {
         const mod = await import('socket.io-client');
         const { io } = mod;
-        socket = io('http://localhost:9000', { auth: { token }, transports: ['websocket'] });
+        socket = io('http://72.60.97.98:6006', { auth: { token }, transports: ['websocket'] });
         socket.on('workspace-updated', fetchWorkspaces);
         socket.on('workspace-group-created', fetchWorkspaces);
       } catch (e) {

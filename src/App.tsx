@@ -11,7 +11,6 @@ import Admin from "./pages/Admin";
 import CreateGroup from "./pages/CreateGroup";
 import CreateCommunity from "./pages/CreateCommunity";
 import GroupChat from "./pages/GroupChat";
-import Channels from "./pages/Channels";
 
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Workspace from "./pages/workspace";

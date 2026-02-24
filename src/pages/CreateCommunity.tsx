@@ -47,7 +47,7 @@ const CreateCommunity = () => {
       return;
     }
 
-    fetch("http://localhost:9000/api/user/", {
+    fetch("http://72.60.97.98:6006/api/user/", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -119,7 +119,7 @@ const CreateCommunity = () => {
       if (image) fd.append("image", image);
 
       const res = await fetch(
-        "http://localhost:9000/api/community",
+        "http://72.60.97.98:6006/api/community",
         {
           method: "POST",
           body: fd,

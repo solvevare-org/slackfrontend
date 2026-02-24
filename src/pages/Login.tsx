@@ -74,7 +74,7 @@ const Login = () => {
       setError("");
 
       const response = await fetch(
-        "http://localhost:9000/api/auth/login",
+        "http://72.60.97.98:6006/api/auth/login",
         {
           method: "POST",
           headers: {
@@ -99,7 +99,7 @@ const Login = () => {
       const inviteToken = new URLSearchParams(window.location.search).get('token');
       if (inviteToken) {
         try {
-          const acceptRes = await fetch(`http://localhost:9000/api/auth/invite/accept-existing?token=${encodeURIComponent(inviteToken)}`, {
+          const acceptRes = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept-existing?token=${encodeURIComponent(inviteToken)}`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${result.access}` },
           });
@@ -127,7 +127,7 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = 'http://localhost:9000/api/auth/google';
+    window.location.href = 'http://72.60.97.98:6006/api/auth/google';
   };
 
   return (

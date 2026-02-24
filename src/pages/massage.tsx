@@ -29,7 +29,7 @@ interface IMessage {
   file?: { url?: string; filename?: string };
 }
 
-const SOCKET_URL = "http://localhost:9000";
+const SOCKET_URL = "http://72.60.97.98:6006";
 
 /* ================= COMPONENT ================= */
 

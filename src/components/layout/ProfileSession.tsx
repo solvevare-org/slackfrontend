@@ -39,7 +39,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
     setUploading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:9000/api/user/${userId}/avatar`, {
+      const res = await fetch(`http://72.60.97.98:6006/api/user/${userId}/avatar`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -64,7 +64,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:9000/api/user/${userId}`, {
+      const res = await fetch(`http://72.60.97.98:6006/api/user/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

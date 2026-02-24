@@ -63,7 +63,7 @@ const Admin = () => {
 
       const body: any = { email, role, workspaceId: current.id };
 
-      const res = await fetch("http://localhost:9000/api/auth/invite", {
+      const res = await fetch("http://72.60.97.98:6006/api/auth/invite", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -111,7 +111,7 @@ const Admin = () => {
     }
 
     try {
-      const url = new URL("http://localhost:9000/api/auth/invite/preview");
+      const url = new URL("http://72.60.97.98:6006/api/auth/invite/preview");
       url.searchParams.set("email", email);
       url.searchParams.set("role", role);
 

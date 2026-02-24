@@ -17,7 +17,7 @@ const Signup = () => {
 
   useEffect(() => {
     if (!token) return
-    fetch(`http://localhost:9000/api/auth/invite/validate?token=${encodeURIComponent(token)}`)
+    fetch(`http://72.60.97.98:6006/api/auth/invite/validate?token=${encodeURIComponent(token)}`)
       .then(res => res.json())
       .then(data => {
         if (data.email) setInvite(data)
@@ -34,7 +34,7 @@ const Signup = () => {
       if (!localUser || !localToken) return
 
       try {
-        const res = await fetch(`http://localhost:9000/api/auth/invite/accept-existing?token=${encodeURIComponent(token)}`, {
+        const res = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept-existing?token=${encodeURIComponent(token)}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${localToken}` },
         })
@@ -63,7 +63,7 @@ const Signup = () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`http://localhost:9000/api/auth/invite/accept?token=${encodeURIComponent(token)}`, {
+      const res = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, password }),

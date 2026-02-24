@@ -39,7 +39,7 @@ const Workspace = () => {
     if (!token) return;
     (async () => {
       try {
-        const res = await fetch("http://localhost:9000/api/workspaces", {
+        const res = await fetch("http://72.60.97.98:6006/api/workspaces", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.status === 401) {
@@ -81,7 +81,7 @@ const Workspace = () => {
 
     try {
       const body = { name: name.trim() };
-      const res = await fetch("http://localhost:9000/api/workspaces", {
+      const res = await fetch("http://72.60.97.98:6006/api/workspaces", {
         method: "POST",
         body: JSON.stringify(body),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -121,7 +121,7 @@ const Workspace = () => {
     if (!token) return;
 
     try {
-      const res = await fetch(`http://localhost:9000/api/workspaces/${wsId}`, {
+      const res = await fetch(`http://72.60.97.98:6006/api/workspaces/${wsId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

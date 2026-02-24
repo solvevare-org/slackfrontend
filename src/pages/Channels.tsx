@@ -11,7 +11,7 @@ const Channels = () => {
     const token = localStorage.getItem('token')
     if (!token) { navigate('/login'); return }
 
-    fetch('http://localhost:9000/api/group/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('http://72.60.97.98:6006/api/group/me', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => {
         const groups = Array.isArray(d?.groups) ? d.groups : []

@@ -67,7 +67,7 @@ const Header: React.FC = () => {
     const fetchWorkspaces = async () => {
       if (!token) return;
       try {
-        const res = await fetch('http://localhost:9000/api/workspaces', {
+        const res = await fetch('http://72.60.97.98:6006/api/workspaces', {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -125,7 +125,7 @@ const Header: React.FC = () => {
       const rawWs = localStorage.getItem('currentWorkspace');
       const ws = rawWs ? JSON.parse(rawWs) : null;
       const body = { name: channelName.trim(), members: JSON.stringify(me ? [me] : []), workspaceId: ws?.id || ws?._id };
-      const res = await fetch('http://localhost:9000/api/group', {
+      const res = await fetch('http://72.60.97.98:6006/api/group', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -150,7 +150,7 @@ const Header: React.FC = () => {
       const ws = rawWs ? JSON.parse(rawWs) : null;
       if (!ws?.id && !ws?._id) return setChannels([]);
       const id = ws.id || ws._id;
-      const res = await fetch(`http://localhost:9000/api/workspaces/${id}`, {
+      const res = await fetch(`http://72.60.97.98:6006/api/workspaces/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return setChannels([]);
@@ -172,7 +172,7 @@ const Header: React.FC = () => {
       const rawWs = localStorage.getItem('currentWorkspace')
       const ws = rawWs ? JSON.parse(rawWs) : null
       const workspaceId = ws?.id || ws?._id || null
-      const res = await fetch('http://localhost:9000/api/auth/invite', {
+      const res = await fetch('http://72.60.97.98:6006/api/auth/invite', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole, workspaceId })

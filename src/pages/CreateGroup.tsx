@@ -22,7 +22,7 @@ const CreateGroup = () => {
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [currentWorkspace, setCurrentWorkspace] = useState<any>(null);
 
-  const API_URL = "http://localhost:9000";
+  const API_URL = "http://72.60.97.98:6006";
 
   /* ================= FETCH WORKSPACE MEMBERS ================= */
   useEffect(() => {

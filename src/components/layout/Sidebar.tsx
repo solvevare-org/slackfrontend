@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { onNotification, emitAction, NotificationPayload } from "@/lib/notificationBus";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Home,
   MessageSquare,
@@ -8,6 +8,11 @@ import {
   MoreHorizontal,
   Plus,
   Paperclip,
+  X,
+  Trash2,
+  Hash,
+  User,
+  Sparkles,
 } from "lucide-react";
 import ProfileSession from "./ProfileSession";
 
@@ -23,16 +28,16 @@ function IconButton({ icon, label, active, onClick }: IconButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center w-full py-2 px-3 transition-colors ${
+      className={`flex flex-col items-center justify-center w-full py-2.5 px-3 transition-all rounded-lg ${
         active
-          ? "bg-purple-700/50 text-white"
-          : "text-gray-300 hover:bg-purple-900/30"
+          ? "bg-[#2d0a2e] text-white shadow-lg border-l-4 border-purple-400"
+          : "text-gray-300 hover:bg-purple-900/30 hover:text-white"
       }`}
     >
       <div className="w-6 h-6 flex items-center justify-center mb-1">
         {icon}
       </div>
-      <span className="text-xs font-medium">{label}</span>
+      <span className="text-[10px] font-medium">{label}</span>
     </button>
   );
 }
@@ -41,6 +46,7 @@ type ActivityItem = NotificationPayload & { id: string; ts: number };
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [user, setUser] = useState<any>(null);
   const [unread, setUnread] = useState<number>(0);
@@ -109,31 +115,32 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="h-screen overflow-hidden">
       {/* LEFT SIDEBAR */}
-      <div className="w-[65px] bg-[#4A154B] flex flex-col items-center py-4 text-white relative">
+      <div className="w-[75px] h-full bg-gradient-to-b from-[#4A154B] via-[#5B1A5C] to-[#4A154B] flex flex-col items-center py-4 text-white shadow-2xl border-r border-purple-500/20">
 
         {/* Logo */}
         <div
           onClick={() => navigate("/dashboard")}
-          className="w-12 h-12 bg-white rounded-lg flex items-center justify-center mb-6 cursor-pointer"
+          className="w-14 h-14 bg-gradient-to-br from-white to-gray-100 rounded-xl flex items-center justify-center mb-8 cursor-pointer shadow-lg hover:scale-105 transition-transform"
         >
-          
-          <span className="text-[#4A154B] font-bold text-xl" >SV</span>
+          <span className="text-[#4A154B] font-bold text-2xl">SV</span>
         </div>
 
         {/* NAVIGATION */}
-        <div className="flex-1 w-full flex flex-col items-center gap-4">
+        <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           <IconButton
             icon={<Home size={22} />}
             label="Home"
+            active={location.pathname.includes('/dashboard')}
             onClick={() => navigate("/dashboard")}
           />
 
           <IconButton
             icon={<MessageSquare size={22} />}
             label="DMs"
+            active={location.pathname.includes('/dm')}
             onClick={() => navigate("/dm/id")}
           />
 
@@ -142,6 +149,7 @@ const Sidebar: React.FC = () => {
             <IconButton
               icon={<Plus size={22} />}
               label="Add Workspace"
+              active={location.pathname.includes('/workspace')}
               onClick={() => navigate("/workspace")}
             />
           )}
@@ -150,7 +158,7 @@ const Sidebar: React.FC = () => {
           <div className="relative w-full">
             <button
               onClick={openActivity}
-              className="flex flex-col items-center justify-center w-full py-2 px-3 text-gray-300 hover:bg-purple-900/30"
+              className="flex flex-col items-center justify-center w-full py-2 px-3 text-gray-300 hover:bg-purple-900/30 transition-colors rounded-lg"
             >
               <div className="w-6 h-6 flex items-center justify-center mb-1">
                 <Bell size={22} />
@@ -159,44 +167,109 @@ const Sidebar: React.FC = () => {
             </button>
 
             {unread > 0 && (
-              <span className="absolute top-1 right-3 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold rounded-full bg-red-500 text-white">
+              <span className="absolute top-1 right-3 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold rounded-full bg-red-500 text-white shadow-lg animate-pulse">
                 {unread > 9 ? "9+" : unread}
               </span>
             )}
 
             {/* Activity modal (centered) */}
             {activityOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center">
-                <div className="absolute inset-0 bg-black/50" onClick={() => setActivityOpen(false)} />
-                <div className="relative w-[520px] max-h-[70vh] bg-[#0f1115] border border-white/10 rounded shadow-lg overflow-hidden">
-                  <div className="flex items-center justify-between p-3 border-b border-white/5">
-                    <div className="text-sm font-semibold">Activity</div>
+              <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn">
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setActivityOpen(false)} />
+                <div className="relative w-[580px] max-h-[75vh] bg-gradient-to-br from-[#1a1d21]/95 via-[#0f1115]/98 to-[#1a1d21]/95 backdrop-blur-xl border border-purple-500/40 rounded-2xl shadow-2xl overflow-hidden animate-scaleIn">
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-5 border-b border-purple-500/30 bg-gradient-to-r from-purple-600/20 to-pink-600/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-500/20 rounded-lg">
+                        <Bell className="w-5 h-5 text-purple-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white">Activity Center</h3>
+                        <p className="text-xs text-purple-300">{activities.length} notification{activities.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
                     <div className="flex gap-2">
-                      <button onClick={clearAll} className="text-xs px-2 py-1 bg-red-600/90 rounded text-white">All Clear</button>
-                      <button onClick={() => setActivityOpen(false)} className="text-xs px-2 py-1 bg-white/5 rounded">Close</button>
+                      {activities.length > 0 && (
+                        <button onClick={clearAll} className="flex items-center gap-2 px-4 py-2 bg-red-600/80 hover:bg-red-600 rounded-lg text-white transition-all hover:scale-105 shadow-lg text-sm font-medium">
+                          <Trash2 size={14} />
+                          Clear All
+                        </button>
+                      )}
+                      <button onClick={() => setActivityOpen(false)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all hover:scale-105">
+                        <X size={18} className="text-white" />
+                      </button>
                     </div>
                   </div>
-                  <div className="overflow-y-auto max-h-[60vh]">
+                  
+                  {/* Content */}
+                  <div className="overflow-y-auto max-h-[calc(75vh-80px)]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
                     {activities.length === 0 ? (
-                      <div className="p-4 text-sm text-gray-400">No notifications</div>
-                    ) : (
-                      activities.map((it) => (
-                        <div key={it.id} onClick={() => handleClickActivity(it)} className="flex items-start gap-3 p-3 hover:bg-white/3 cursor-pointer border-b border-white/5">
-                          <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm text-white">
-                            {it.type === 'private' ? 'DM' : it.type === 'group' ? 'G' : 'N'}
-                          </div>
-                          <div className="flex-1">
-                            <div className="text-sm font-medium">{it.title || (it.type === 'private' ? 'Direct message' : 'Group message')}</div>
-                            <div className="text-xs text-gray-400 truncate mt-1">{it.file?.filename ? `Attachment: ${it.file.filename}` : (it.message || '')}</div>
-                            <div className="text-[10px] text-gray-500 mt-1">{new Date(it.ts || Date.now()).toLocaleString()}</div>
-                          </div>
-                          {it.file?.filename && (
-                            <div className="text-gray-400">
-                              <Paperclip size={14} />
-                            </div>
-                          )}
+                      <div className="p-12 text-center">
+                        <div className="w-20 h-20 mx-auto mb-4 bg-purple-500/10 rounded-full flex items-center justify-center">
+                          <Sparkles className="w-10 h-10 text-purple-400" />
                         </div>
-                      ))
+                        <p className="text-gray-400 text-sm font-medium">No notifications yet</p>
+                        <p className="text-gray-500 text-xs mt-2">You're all caught up!</p>
+                      </div>
+                    ) : (
+                      <div className="p-3 space-y-2">
+                        {activities.map((it) => (
+                          <div 
+                            key={it.id} 
+                            onClick={() => handleClickActivity(it)} 
+                            className="group flex items-start gap-4 p-4 hover:bg-purple-600/15 cursor-pointer border border-transparent hover:border-purple-500/30 rounded-xl transition-all duration-200 hover:scale-[1.02] bg-[#0a0b0d]/30"
+                          >
+                            <div className="relative flex-shrink-0">
+                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
+                                {it.type === 'private' ? <User size={20} /> : it.type === 'group' ? <Hash size={20} /> : <Bell size={20} />}
+                              </div>
+                              {it.file?.filename && (
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-pink-600 rounded-full flex items-center justify-center shadow-lg">
+                                  <Paperclip size={12} className="text-white" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors">
+                                  {it.title || (it.type === 'private' ? 'Direct message' : 'Channel message')}
+                                </div>
+                                <div className="text-[10px] text-gray-500 whitespace-nowrap">
+                                  {(() => {
+                                    const now = Date.now();
+                                    const diff = now - (it.ts || now);
+                                    const mins = Math.floor(diff / 60000);
+                                    const hrs = Math.floor(diff / 3600000);
+                                    if (mins < 1) return 'Just now';
+                                    if (mins < 60) return `${mins}m ago`;
+                                    if (hrs < 24) return `${hrs}h ago`;
+                                    return new Date(it.ts || now).toLocaleDateString();
+                                  })()}
+                                </div>
+                              </div>
+                              <div className="text-xs text-gray-400 mt-1.5 line-clamp-2">
+                                {it.file?.filename ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <Paperclip size={12} className="text-purple-400" />
+                                    <span className="font-medium text-purple-300">{it.file.filename}</span>
+                                  </span>
+                                ) : (
+                                  it.message || 'New notification'
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                  it.type === 'private' 
+                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
+                                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                }`}>
+                                  {it.type === 'private' ? 'Direct Message' : 'Channel Message'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -204,24 +277,26 @@ const Sidebar: React.FC = () => {
             )}
           </div>
 
-          <IconButton
+          {/* <IconButton
             icon={<MoreHorizontal size={22} />}
             label="More"
-          />
+          /> */}
         </div>
 
-        {/* PROFILE */}
-        <div className="mb-4 text-center cursor-pointer" onClick={() => { setViewingUser(null); setProfileOpen(true); }}>
-          {user?.avatar ? (
-            <img src={user.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover hover:ring-2 hover:ring-white transition" />
-          ) : (
-            <div className="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center hover:ring-2 hover:ring-white transition">
-              <span className="text-black font-bold">
-                {user?.name?.charAt(0)?.toUpperCase() || "U"}
-              </span>
-            </div>
-          )}
-          <div className="text-xs mt-1">{user?.name || "User"}</div>
+        {/* PROFILE - Fixed at bottom */}
+        <div className="w-full pt-4 border-t border-purple-500/30">
+          <div className="text-center cursor-pointer px-2" onClick={() => { setViewingUser(null); setProfileOpen(true); }}>
+            {user?.avatar ? (
+              <img src={user.avatar} alt="Profile" className="w-14 h-14 rounded-full object-cover hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg" />
+            ) : (
+              <div className="w-14 h-14 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg">
+                <span className="text-white font-bold text-xl">
+                  {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                </span>
+              </div>
+            )}
+            <div className="text-[10px] mt-2 text-gray-300 font-medium truncate">{user?.name || "User"}</div>
+          </div>
         </div>
 
       </div>

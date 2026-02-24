@@ -11,6 +11,7 @@ interface ProfileSessionProps {
 const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, isOwnProfile = true }) => {
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState(false);
   const [formData, setFormData] = useState({
     description: user?.description || '',
     phone: user?.phone || '',
@@ -95,6 +96,16 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
 
   return (
     <>
+      {/* Fullscreen Image Viewer */}
+      {fullscreenImage && user?.avatar && (
+        <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center" onClick={() => setFullscreenImage(false)}>
+          <button onClick={() => setFullscreenImage(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
+            <X size={24} />
+          </button>
+          <img src={user.avatar} alt="Profile" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
       <div className={`fixed top-0 right-0 h-full w-[420px] bg-[#1A1D21] shadow-2xl z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         
@@ -112,7 +123,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           {/* Profile Picture */}
           <div className="flex justify-center mb-8 relative">
             {user?.avatar ? (
-              <img src={user.avatar} alt="Profile" className="w-28 h-28 rounded-full object-cover border-4 border-purple-600" />
+              <img src={user.avatar} alt="Profile" className="w-28 h-28 rounded-full object-cover border-4 border-purple-600 cursor-pointer hover:opacity-80 transition" onClick={() => setFullscreenImage(true)} />
             ) : (
               <div className="w-28 h-28 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center text-white text-4xl font-bold border-4 border-purple-500">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}

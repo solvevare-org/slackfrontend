@@ -41,14 +41,20 @@ const DirectMessage = () => {
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<IUser | null>(null);
   const [dmUsers, setDmUsers] = useState<IUser[]>([]);
   const [activeDM, setActiveDM] = useState<IUser | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
+  const [uploadAbortController, setUploadAbortController] = useState<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   const [directMessagesExpanded, setDirectMessagesExpanded] = useState(true);
 
   // context menu / edit state
@@ -161,7 +167,10 @@ const DirectMessage = () => {
       if (msg.workspace && currentWs?.id && String(msg.workspace) !== String(currentWs.id)) return;
 
       if (activeDM && (msg.from === activeDM._id || (msg.to && String(msg.to) === String(activeDM._id)))) {
-        setMessages((prev) => [...prev, msg]);
+        // Only add message if it's from the other person, not from me
+        if (msg.from !== myId) {
+          setMessages((prev) => [...prev, msg]);
+        }
       } else if (msg.from !== myId) {
         setUnreadCounts((prev) => ({
           ...prev,
@@ -234,6 +243,8 @@ const DirectMessage = () => {
       ...prev,
       [activeDM._id!]: 0,
     }));
+
+    setTimeout(() => inputRef.current?.focus(), 100);
   }, [activeDM]);
 
   /* ================= AUTO SCROLL ================= */
@@ -242,32 +253,60 @@ const DirectMessage = () => {
   }, [messages]);
 
   /* ================= SEND ================= */
-  const sendMessage = () => {
-    if (!socketRef.current || !activeDM || !text.trim()) return;
-    const rawWs = localStorage.getItem('currentWorkspace');
-    const currentWs = rawWs ? JSON.parse(rawWs) : null;
+  const sendMessage = async () => {
+    if (!socketRef.current || !activeDM) return;
+    if (!text.trim() && files.length === 0) return;
 
-    socketRef.current.emit("private message", {
-      to: activeDM._id,
-      content: text.trim(),
-      workspaceId: currentWs?.id || null
-    });
+    if (files.length > 0) {
+      const controller = new AbortController();
+      setUploadAbortController(controller);
+      setUploadingFiles(true);
+      
+      try {
+        for (const f of files) {
+          if (controller.signal.aborted) break;
+          await uploadFile(f, controller.signal);
+        }
+        show('Files sent successfully', 'success');
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          show('Upload cancelled', 'info');
+        } else {
+          show('Upload failed', 'error');
+        }
+      }
+      
+      setUploadingFiles(false);
+      setUploadAbortController(null);
+      setFiles([]);
+    }
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        from: myId,
-        fromName: user?.name,
+    if (text.trim()) {
+      const rawWs = localStorage.getItem('currentWorkspace');
+      const currentWs = rawWs ? JSON.parse(rawWs) : null;
+
+      socketRef.current.emit("private message", {
+        to: activeDM._id,
         content: text.trim(),
-        workspace: currentWs?.id || null,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+        workspaceId: currentWs?.id || null
+      });
 
-    setText("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          from: myId,
+          fromName: user?.name,
+          content: text.trim(),
+          workspace: currentWs?.id || null,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+
+      setText("");
+    }
   }; 
 
-  const uploadFile = async (f: File) => {
+  const uploadFile = async (f: File, signal?: AbortSignal) => {
     if (!activeDM) return;
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -280,28 +319,92 @@ const DirectMessage = () => {
     const currentWs = rawWs ? JSON.parse(rawWs) : null;
     if (currentWs?.id) fd.append('workspaceId', currentWs.id);
 
-    try {
-      const res = await fetch(`${SOCKET_URL}/api/message/upload`, {
-        method: 'POST',
-        body: fd,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(()=>({}));
-        show(err?.msg || 'Upload failed', 'error');
-        return;
-      }
-      const data = await res.json();
-      const msg = data?.message;
-      if (msg) {
-        setMessages((prev) => [...prev, msg]);
-        setFile(null);
-      }
-    } catch (e) {
-      console.error(e);
-      show('Upload error', 'error');
+    const res = await fetch(`${SOCKET_URL}/api/message/upload`, {
+      method: 'POST',
+      body: fd,
+      headers: { Authorization: `Bearer ${token}` },
+      signal
+    });
+
+    const data = await res.json();
+    const msg = data?.message;
+    if (msg) {
+      setMessages((prev) => [...prev, msg]);
     }
   }
+
+  const cancelUpload = () => {
+    if (uploadAbortController) {
+      uploadAbortController.abort();
+      setUploadAbortController(null);
+      setUploadingFiles(false);
+      setFiles([]);
+    }
+  };
+
+  const toggleMessageSelection = (msgId: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(msgId)) newSet.delete(msgId);
+      else newSet.add(msgId);
+      return newSet;
+    });
+  };
+
+  const deleteSelectedMessages = async () => {
+    const token = localStorage.getItem('token');
+    if (!token || selectedMessages.size === 0) return;
+
+    // Separate own messages and other's messages
+    const myMessages = messages.filter(m => m.id && selectedMessages.has(m.id) && m.from === myId);
+    const otherMessages = messages.filter(m => m.id && selectedMessages.has(m.id) && m.from !== myId);
+
+    try {
+      // Delete own messages from backend
+      for (const msg of myMessages) {
+        await fetch(`${SOCKET_URL}/api/message/${msg.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      }
+      
+      // Remove all selected messages from UI (both own and others)
+      setMessages(prev => prev.filter(m => !selectedMessages.has(m.id || '')));
+      
+      const totalDeleted = myMessages.length + otherMessages.length;
+      show(`${totalDeleted} message(s) removed from chat`, 'success');
+      setSelectedMessages(new Set());
+      setSelectionMode(false);
+    } catch (e) {
+      show('Delete failed', 'error');
+    }
+  };
+
+  const downloadFile = async (url: string, filename: string, fileId: string) => {
+    const controller = new AbortController();
+    setDownloadingFiles(prev => ({ ...prev, [fileId]: controller }));
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(blobUrl);
+      setDownloadingFiles(prev => { const newState = { ...prev }; delete newState[fileId]; return newState; });
+      show('File Downloaded', 'success');
+    } catch (err: any) {
+      if (err.name === 'AbortError') show('Download cancelled', 'info');
+      else show('Download failed', 'error');
+      setDownloadingFiles(prev => { const newState = { ...prev }; delete newState[fileId]; return newState; });
+    }
+  };
+
+  const cancelDownload = (fileId: string) => {
+    const controller = downloadingFiles[fileId];
+    if (controller) {
+      controller.abort();
+      setDownloadingFiles(prev => { const newState = { ...prev }; delete newState[fileId]; return newState; });
+    }
+  };
 
   /* ================= NOTIFICATION ================= */
   const showNotification = (title: string, body: string) => {
@@ -315,72 +418,60 @@ const DirectMessage = () => {
   /* ================= UI ================= */
   return (
     <AppLayout>
-      <div className="flex h-screen bg-[#1a1d21] text-white">
+      <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
 
         {/* SIDEBAR */}
-        <aside className="w-[330px] bg-[#1A1D21] flex flex-col border-r border-white/10">
-          <div className="px-3 mt-4">
+        <aside className="w-[280px] bg-[#1A1D21]/80 backdrop-blur-sm border-r border-purple-500/20 shadow-2xl flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
 
-            <button
-              onClick={() =>
-                setDirectMessagesExpanded(!directMessagesExpanded)
-              }
-              className="flex items-center gap-2 w-full px-3 py-1 text-lg font-semibold"
-            >
-              <ChevronDown size={16} />
-              Direct Messages
-            </button>
+          <div className="text-xs font-semibold text-gray-400 mb-3 px-3">
+            Direct Messages
+          </div>
 
-            {directMessagesExpanded && (
-              <div className="mt-2 space-y-1">
-                {dmUsers.map((u) => {
-                  const id = u._id!;
-                  const isOnline = onlineUsers.includes(id);
-
-                  return (
-                    <div
-                      key={id}
-                      onClick={() => { setActiveDM(u); try { localStorage.setItem('activeDM', JSON.stringify(u)) } catch (e) {} }}
-                      className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer text-sm ${
-                        activeDM?._id === id
-                          ? "bg-[#1164A3]"
-                          : "hover:bg-white/5"
+          <div className="space-y-1">
+            {dmUsers.map((u) => {
+              const isOnline = onlineUsers.includes(u._id || u.id || '');
+              const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
+              return (
+                <div
+                  key={u._id}
+                  onClick={() => { setActiveDM(u); try { localStorage.setItem('activeDM', JSON.stringify(u)) } catch (e) {} }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
+                    activeDM?._id === u._id
+                      ? 'bg-purple-600/20 border border-purple-500/30'
+                      : 'hover:bg-white/5'
+                  }`}
+                >
+                  <div className="relative" onClick={async (e) => { 
+                    e.stopPropagation(); 
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
+                    const data = await res.json();
+                    setViewingUser(data.user || u); 
+                    setProfileOpen(true); 
+                  }}>
+                    <UserAvatar user={u} size="sm" />
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
+                        isOnline ? "bg-green-500" : "bg-gray-500"
                       }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="relative" onClick={async (e) => { 
-                          e.stopPropagation(); 
-                          const token = localStorage.getItem('token');
-                          const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                          const data = await res.json();
-                          setViewingUser(data.user || u); 
-                          setProfileOpen(true); 
-                        }}>
-                          <UserAvatar user={u} size="sm" />
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
-                              isOnline ? "bg-green-500" : "bg-gray-500"
-                            }`}
-                          />
-                        </div>
-                        {u.name}
-                      </div>
-
-                      {unreadCounts[id] > 0 && (
-                        <span className="bg-red-500 text-xs px-2 rounded-full">
-                          {unreadCounts[id]}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-gray-200">{u.name}</span>
+                  {hasUnread && (
+                    <span className="ml-auto bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
+                      {unreadCounts[u._id || u.id || '']}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           </div>
         </aside>
 
         {/* MAIN */}
-        <main className="flex-1 flex flex-col relative bg-[#0f1115]">
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#0f1115]">
           {!activeDM ? (
             <div className="flex flex-col items-center justify-center h-full">
               <h1 className="text-2xl font-semibold mb-4">
@@ -388,29 +479,69 @@ const DirectMessage = () => {
               </h1>
             </div>
           ) : (
-            <>
-              <div className="bg-[#1A1D21] p-4 font-semibold border-b border-white/10">
-                {activeDM.name}
+            <div className="flex flex-col h-full">
+              {/* FIXED HEADER */}
+              <div className="flex-shrink-0 p-5 border-b border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/90 to-[#0f1115]/90 backdrop-blur-md shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="cursor-pointer" onClick={async () => {
+                      const token = localStorage.getItem('token');
+                      const res = await fetch(`${SOCKET_URL}/api/user/${activeDM._id || activeDM.id}`, { headers: { Authorization: `Bearer ${token}` } });
+                      const data = await res.json();
+                      setViewingUser(data.user || activeDM);
+                      setProfileOpen(true);
+                    }}>
+                      <UserAvatar user={activeDM} size="md" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-lg text-white">{activeDM.name}</h2>
+                      <p className="text-xs text-purple-300">Direct Message</p>
+                    </div>
+                  </div>
+                  {selectedMessages.size > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
+                      <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">Delete</button>
+                      <button onClick={() => { setSelectedMessages(new Set()); setSelectionMode(false); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">Cancel</button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 mb-16" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {/* SCROLLABLE MESSAGES */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
                 {messages.map((m, idx) => {
                   const isImage = m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || '')));
                   const isMine = m.from === myId;
+                  const msgUser = isMine ? user : dmUsers.find(u => (u._id || u.id) === m.from);
                   return (
+                  <div key={m.id || `msg-${idx}`} className={`group flex ${isMine ? 'justify-end' : 'justify-start'} animate-fadeIn items-start gap-2`} onMouseEnter={() => m.id && setSelectionMode(true)}>
+                  {!isMine && msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
+                  <div className="flex items-center gap-2">
+                  {isMine && (
+                    <div className={selectedMessages.has(m.id || '') ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} style={{transition: 'opacity 0.2s'}}>
+                      <input type="checkbox" checked={selectedMessages.has(m.id || '')} onChange={() => m.id && toggleMessageSelection(m.id)} className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer" />
+                    </div>
+                  )}
                   <div
-                    key={m.id || `msg-${idx}`}
                     onContextMenu={(e) => { e.preventDefault(); if (!m.id) return; const role = ((user?.role || user?.Role || '') as string).toLowerCase(); if (String(m.from) !== String(myId) && role !== 'admin') return; setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); }}
-                    className={`relative ${
-                      isMine ? "ml-auto" : ""
+                    onClick={(e) => {
+                      if (selectedMessages.size > 0 && m.id) toggleMessageSelection(m.id);
+                      else if (m.id && String(m.from) === String(myId)) {
+                        const role = ((user?.role || user?.Role || '') as string).toLowerCase();
+                        if (String(m.from) === String(myId) || role === 'admin') setContextMenu({ x: e.clientX, y: e.clientY, id: m.id });
+                      }
+                    }}
+                    className={`relative transition-all duration-200 hover:scale-[1.02] cursor-pointer ${
+                      isImage ? 'rounded-[1.5rem]' : 'p-4 rounded-[1.25rem]'
                     } ${
-                      isImage ? '' : 'p-3'
+                      !isImage && isMine ? 'bg-gradient-to-br from-purple-600 to-purple-700 shadow-lg shadow-purple-900/50' : ''
                     } ${
-                      !isImage && isMine ? 'bg-[#1164A3]' : ''
+                      !isImage && !isMine ? 'bg-gradient-to-br from-[#2b2f36] to-[#1f2329] shadow-lg' : ''
                     } ${
-                      !isImage && !isMine ? 'bg-[#2b2f36]' : ''
+                      selectedMessages.has(m.id || '') ? 'ring-4 ring-purple-500 ring-offset-2 ring-offset-[#0f1115]' : ''
                     }`}
-                    style={{ borderRadius: '1.25rem', maxWidth: '19rem' }}
+                    style={{ maxWidth: '19rem' }}
                   >
 
                     {editingId === m.id ? (
@@ -454,29 +585,55 @@ const DirectMessage = () => {
                         {/* attachments: inline image */}
                         {m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || ''))) ? (
                           <img src={m.file!.url} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(m.file!.url, '_blank')} />
-                        ) : m.file && /\.(pdf|rar|zip)$/i.test(m.file?.filename || '') ? (
-                          <div className="w-[280px] rounded-xl overflow-hidden border border-white/10">
-                            <div className="h-32 bg-[#2b2f36] flex items-center justify-center overflow-hidden">
-                              {m.file?.thumbnail ? (
-                                <img src={m.file.thumbnail} alt="preview" className="w-full h-full object-cover" />
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                              )}
-                            </div>
-                            <div className="p-4 bg-[#2b2f36]">
-                              <div className="text-sm font-medium text-white truncate mb-1">{m.file!.filename || 'File'}</div>
-                              <div className="text-xs text-gray-400 mb-3">{m.file?.filename?.split('.').pop()?.toUpperCase()} File</div>
-                              <a href={m.file!.url} download={m.file!.filename || 'file'} className="flex items-center justify-center gap-2 w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Download
-                              </a>
-                            </div>
+                        ) : m.file && /\.pdf$/i.test(m.file?.filename || '') ? (
+                          <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
+                            {downloadingFiles[m.id || ''] ? (
+                              <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
+                                <div className="relative">
+                                  <svg className="animate-spin h-16 w-16 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                  <button onClick={(e) => { e.stopPropagation(); cancelDownload(m.id || ''); }} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-700 transition"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                                </div>
+                                <div className="text-sm text-green-400 mt-4 font-medium">Downloading...</div>
+                              </div>
+                            ) : (
+                              <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => window.open(m.file!.url, '_blank')}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>
+                                <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file!.filename || 'File'}</div>
+                                <div className="flex gap-2 mt-4">
+                                  <button onClick={(e) => { e.stopPropagation(); window.open(m.file!.url, '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
+                                  <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file.pdf', m.id || ''); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : m.file && /\.(rar|zip)$/i.test(m.file?.filename || '') ? (
+                          <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
+                            {downloadingFiles[m.id || ''] ? (
+                              <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
+                                <div className="relative">
+                                  <svg className="animate-spin h-16 w-16 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                  <button onClick={(e) => { e.stopPropagation(); cancelDownload(m.id || ''); }} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-700 transition"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                                </div>
+                                <div className="text-sm text-green-400 mt-4 font-medium">Downloading...</div>
+                              </div>
+                            ) : (
+                              <div className="h-full p-6 flex flex-col items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <span className="text-purple-400 font-bold text-2xl mt-3">{m.file?.filename?.split('.').pop()?.toUpperCase()}</span>
+                                <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file!.filename || 'File'}</div>
+                                <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           hideUrls(m.content) && <div>{hideUrls(m.content)} {m.edited && <span className="text-[10px] text-gray-300">(edited)</span>}</div>
                         )}
                       </>
                     )} 
+                  </div>
+                  </div>
+                  {isMine && msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
                   </div>
                   );
                 })}
@@ -518,35 +675,42 @@ const DirectMessage = () => {
                 )}
               </div>
 
-              <div className="absolute bottom-0 w-full border-t border-white/10 p-4 bg-[#0f1115]">
-                <div className="flex items-center gap-3">
-                  <input
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && sendMessage()
-                    }
-                    className="flex-1 bg-[#2b2f36] rounded-lg px-5 py-3 outline-none"
-                    placeholder="Type a message..."
-                  />
-
-                  <div className="flex items-center gap-2">
-                    <input ref={fileInputRef} className="hidden" type="file" onChange={(e) => { const f = e.target.files?.[0] || null; setFile(f); if (f) uploadFile(f); }} />
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 rounded-lg bg-white/5">
-                      <Plus size={18} />
-                    </button>
-                    {file && <div className="text-sm truncate max-w-xs">{file.name}</div>}
-                    <button
-                      onClick={sendMessage}
-                      disabled={!text.trim()}
-                      className="p-3 rounded-lg bg-[#1164A3]"
-                    >
-                      <Send size={18} />
-                    </button>
+              {/* FIXED INPUT FIELD */}
+              <div className="flex-shrink-0 p-5 border-t border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-md shadow-2xl">
+                {uploadingFiles && (
+                  <div className="mb-3 p-4 bg-green-900/20 rounded-xl border border-green-500/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <svg className="animate-spin h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        <span className="text-green-400 font-medium">Sending files...</span>
+                      </div>
+                      <button onClick={cancelUpload} className="p-2 bg-red-600 rounded-lg hover:bg-red-700 transition"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
                   </div>
+                )}
+                {files.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-purple-600/20 px-3 py-2 rounded-lg border border-purple-500/30">
+                        <span className="text-sm text-white truncate max-w-[150px]">{f.name}</span>
+                        <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-300"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  {selectionMode && (
+                    <button onClick={() => { if (selectedMessages.size === messages.length) setSelectedMessages(new Set()); else setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean))); }} className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105" title="Select All">
+                      <input type="checkbox" checked={selectedMessages.size === messages.length && messages.length > 0} readOnly className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer" />
+                    </button>
+                  )}
+                  <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !uploadingFiles && sendMessage()} disabled={uploadingFiles} className="flex-1 bg-[#2b2f36] border border-purple-500/20 rounded-xl px-5 py-3.5 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all placeholder:text-gray-500 disabled:opacity-50" placeholder="Type a message..." />
+                  <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { const selectedFiles = Array.from(e.target.files || []); setFiles(prev => [...prev, ...selectedFiles]); e.target.value = ''; }} />
+                  <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105 disabled:opacity-50"><Plus size={20} className="text-purple-400" /></button>
+                  <button onClick={sendMessage} disabled={(!text.trim() && files.length === 0) || uploadingFiles} className="p-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 shadow-lg shadow-purple-900/50"><Send size={20} /></button>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </main>
       </div>

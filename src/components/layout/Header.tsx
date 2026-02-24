@@ -1,4 +1,4 @@
-import { LogOut, Search, ChevronDown, Plus } from 'lucide-react';
+import { LogOut, Search, ChevronDown, Plus, Sparkles, Building2 } from 'lucide-react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -203,30 +203,50 @@ const Header: React.FC = () => {
           <div className="relative flex items-center gap-2">
             <button
               onClick={() => setOpen(!open)}
-              className="text-l text-gray-300 bg-white/5 px-3 font-bold py-1 rounded flex items-center gap-2"
+              className="text-sm text-white bg-purple-600/20 hover:bg-purple-600/30 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 transition-all shadow-lg"
             >
-              {currentWorkspace ? currentWorkspace.name : 'Select workspace'} <ChevronDown className="w-4 h-4" />
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
+              </div>
+              <span className="font-semibold">{currentWorkspace ? currentWorkspace.name : 'Select workspace'}</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
        
 
             {open && (
-              <div className="absolute left-0 top-0 mt-2 w-64 bg-[#111214] border border-gray-800 rounded shadow z-30">
-                <div className="p-2 text-sm text-gray-400">Your Workspaces</div>
-                <div className="max-h-64 overflow-auto">
-                  {workspaces.length === 0 ? (
-                    <div className="p-2 text-sm text-gray-500">No workspaces</div>
-                  ) : (
-                    workspaces.map(ws => (
-                      <button
-                        key={ws._id}
-                        onClick={() => { openWorkspace(ws); setOpen(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between">
-                        <span className="text-sm">{ws.name}</span>
-                      </button>
-                    ))
-                  )}
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+                <div className="absolute left-0 top-full mt-2 w-72 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
+                  <div className="p-3 border-b border-purple-500/20 bg-purple-600/10">
+                    <div className="text-xs font-semibold text-purple-300">YOUR WORKSPACES</div>
+                  </div>
+                  <div className="max-h-80 overflow-auto" style={{ scrollbarWidth: 'thin' }}>
+                    {workspaces.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-gray-500">No workspaces available</div>
+                    ) : (
+                      workspaces.map(ws => (
+                        <button
+                          key={ws._id}
+                          onClick={() => { openWorkspace(ws); setOpen(false); }}
+                          className={`w-full text-left px-4 py-3 hover:bg-purple-600/10 flex items-center gap-3 transition-colors border-b border-purple-500/10 ${
+                            currentWorkspace?._id === ws._id ? 'bg-purple-600/20' : ''
+                          }`}>
+                          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold shadow-lg">
+                            {ws.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-white">{ws.name}</div>
+                            <div className="text-xs text-gray-400">{ws.type || 'Workspace'}</div>
+                          </div>
+                          {currentWorkspace?._id === ws._id && (
+                            <div className="w-2 h-2 bg-green-500 rounded-full" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -234,10 +254,10 @@ const Header: React.FC = () => {
         {/* CENTER SEARCH */}
         <div className="w-1/2 flex justify-center">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-purple-400" />
             <input
               placeholder="Search SolveVare"
-              className="w-full pl-10 pr-4 py-2 rounded bg-black placeholder:text-gray-400 text-sm outline-none"
+              className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-[#0a0b0d]/50 border border-purple-500/20 placeholder:text-gray-500 text-sm text-white outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
             />
           </div>
         </div>
@@ -254,32 +274,37 @@ const Header: React.FC = () => {
           <button
             onClick={() => setShowPlusMenu((s) => !s)}
             title="Create / Invite"
-            className="flex items-center gap-2 px-3 py-1 hover:bg-white/10 rounded bg-white/5"
+            className="flex items-center gap-2 px-4 py-2 hover:bg-purple-600/20 rounded-xl bg-purple-600/10 border border-purple-500/30 transition-all shadow-lg"
           >
-            <Plus className="w-4 h-4 text-green-300" />
+            <Plus className="w-5 h-5 text-purple-400" />
           </button>
 
           {showPlusMenu && (
-            <div className="absolute right-0 mt-2 w-40 bg-[#111214] border border-gray-800 rounded shadow z-40">
-              <button
-                onClick={() => { setShowPlusMenu(false); navigate('/create-channel'); }}
-                className="w-full text-left px-3 py-2 hover:bg-gray-800"
-              >
-                Create Channel
-              </button>
-              <button
-                onClick={() => { setShowPlusMenu(false); navigate('/admin'); }}
-                className="w-full text-left px-3 py-2 hover:bg-gray-800"
-              >
-                Invite Member
-              </button>
-            </div>
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowPlusMenu(false)} />
+              <div className="absolute right-0 mt-2 w-48 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
+                <button
+                  onClick={() => { setShowPlusMenu(false); navigate('/create-channel'); }}
+                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors border-b border-purple-500/10 flex items-center gap-2"
+                >
+                  <Building2 className="w-4 h-4 text-purple-400" />
+                  Create Channel
+                </button>
+                <button
+                  onClick={() => { setShowPlusMenu(false); navigate('/admin'); }}
+                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  Invite Member
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
         
           {/* invite moved into split control on the left for admins */}
-          <button onClick={handleLogout} title="Logout" className="p-2 rounded hover:bg-white/10 transition">
+          <button onClick={handleLogout} title="Logout" className="p-2.5 rounded-xl hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/30">
             <LogOut className="h-5 w-5 text-red-400" />
           </button>
 

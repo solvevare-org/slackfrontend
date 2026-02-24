@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import AuthCallback from "./pages/AuthCallback";
 import Dashboard from "./pages/Dashboard";
 import ChannelPage from "./pages/ChannelPage";
 import DirectMessage from "./pages/DirectMessage";
@@ -24,6 +25,7 @@ const App = () => {
         {/* PUBLIC ROUTES */}
         <Route path="/login" element={<Login />} />
         <Route path="/accept-invite" element={<Signup />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* DEFAULT REDIRECT */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -7,5 +7,10 @@ export default {
   theme: {
     extend: {},
   },
+  safelist: [
+    'bg-[#1164A3]',
+    'bg-purple-900/40',
+    'text-white'
+  ],
   plugins: [],
 }

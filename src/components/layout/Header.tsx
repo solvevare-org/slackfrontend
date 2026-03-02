@@ -1,6 +1,7 @@
-import { LogOut, Search, ChevronDown, Plus, Sparkles, Building2 } from 'lucide-react';
+import { LogOut, Search, ChevronDown, Plus, Sparkles, Building2, X } from 'lucide-react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL, SOCKET_URL } from '@/lib/config';
 
 
 
@@ -9,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 interface IWorkspace {
   _id: string;
   name: string;
+  image?: string;
   type?: string;
   createdAt?: string;
 }
@@ -40,6 +42,7 @@ const Header: React.FC = () => {
   const [inviteRole, setInviteRole] = React.useState('User');
   const [actionMsg, setActionMsg] = React.useState('');
   const [user, setUser] = React.useState<any>(null);
+  const [fullscreenImage, setFullscreenImage] = React.useState<string | null>(null);
   const isAdmin = (user?.role || user?.Role || '').toString().toLowerCase() === 'admin';
 
   // Load current workspace from localStorage
@@ -67,7 +70,7 @@ const Header: React.FC = () => {
     const fetchWorkspaces = async () => {
       if (!token) return;
       try {
-        const res = await fetch('http://72.60.97.98:6006/api/workspaces', {
+        const res = await fetch(`${API_URL}/api/workspaces`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -96,7 +99,7 @@ const Header: React.FC = () => {
       try {
         const mod = await import('socket.io-client');
         const { io } = mod;
-        socket = io('http://72.60.97.98:6006', { auth: { token }, transports: ['websocket'] });
+        socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket'] });
         socket.on('workspace-updated', fetchWorkspaces);
         socket.on('workspace-group-created', fetchWorkspaces);
       } catch (e) {
@@ -125,7 +128,7 @@ const Header: React.FC = () => {
       const rawWs = localStorage.getItem('currentWorkspace');
       const ws = rawWs ? JSON.parse(rawWs) : null;
       const body = { name: channelName.trim(), members: JSON.stringify(me ? [me] : []), workspaceId: ws?.id || ws?._id };
-      const res = await fetch('http://72.60.97.98:6006/api/group', {
+      const res = await fetch(`${API_URL}/api/group`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -150,7 +153,7 @@ const Header: React.FC = () => {
       const ws = rawWs ? JSON.parse(rawWs) : null;
       if (!ws?.id && !ws?._id) return setChannels([]);
       const id = ws.id || ws._id;
-      const res = await fetch(`http://72.60.97.98:6006/api/workspaces/${id}`, {
+      const res = await fetch(`${API_URL}/api/workspaces/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return setChannels([]);
@@ -172,7 +175,7 @@ const Header: React.FC = () => {
       const rawWs = localStorage.getItem('currentWorkspace')
       const ws = rawWs ? JSON.parse(rawWs) : null
       const workspaceId = ws?.id || ws?._id || null
-      const res = await fetch('http://72.60.97.98:6006/api/auth/invite', {
+      const res = await fetch(`${API_URL}/api/auth/invite`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole, workspaceId })
@@ -188,13 +191,23 @@ const Header: React.FC = () => {
 
   const openWorkspace = (ws: IWorkspace) => {
     const namePart = encodeURIComponent(ws.name);
-    try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name })); } catch(e){}
+    try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); } catch(e){}
     setCurrentWorkspace(ws);
     navigate(`/dashboard/${namePart}/${ws._id}`);
   };
 
   return (
     <>
+      {/* Fullscreen Image Viewer */}
+      {fullscreenImage && (
+        <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center" onClick={() => setFullscreenImage(null)}>
+          <button onClick={() => setFullscreenImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
+            <X size={24} />
+          </button>
+          <img src={fullscreenImage} alt="Workspace" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+      
       <div className="text-white py-4 px-6 flex items-center justify-between">
 
         {/* LEFT LOGO + WORKSPACE */}
@@ -205,9 +218,21 @@ const Header: React.FC = () => {
               onClick={() => setOpen(!open)}
               className="text-sm text-white bg-purple-600/20 hover:bg-purple-600/30 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 transition-all shadow-lg"
             >
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
-              </div>
+              {currentWorkspace?.image ? (
+                <img 
+                  src={`${API_URL}${currentWorkspace.image}`} 
+                  alt={currentWorkspace.name} 
+                  className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
+                  }}
+                />
+              ) : (
+                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                  {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
+                </div>
+              )}
               <span className="font-semibold">{currentWorkspace ? currentWorkspace.name : 'Select workspace'}</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
@@ -231,9 +256,21 @@ const Header: React.FC = () => {
                           className={`w-full text-left px-4 py-3 hover:bg-purple-600/10 flex items-center gap-3 transition-colors border-b border-purple-500/10 ${
                             currentWorkspace?._id === ws._id ? 'bg-purple-600/20' : ''
                           }`}>
-                          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold shadow-lg">
-                            {ws.name?.charAt(0)?.toUpperCase()}
-                          </div>
+                          {ws.image ? (
+                            <img 
+                              src={`${API_URL}${ws.image}`} 
+                              alt={ws.name} 
+                              className="w-10 h-10 rounded-lg object-cover shadow-lg cursor-pointer hover:opacity-80 transition"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFullscreenImage(`${API_URL}${ws.image}`);
+                              }}
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold shadow-lg">
+                              {ws.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                          )}
                           <div className="flex-1">
                             <div className="text-sm font-medium text-white">{ws.name}</div>
                             <div className="text-xs text-gray-400">{ws.type || 'Workspace'}</div>

@@ -2,12 +2,14 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import AppLayout from "@/components/layout/AppLayout";
-import { ChevronRight, ChevronDown, Hash, Send, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Hash, Send, Plus, X, MessageSquare, Sparkles } from "lucide-react";
 import { emitNotification, onAction } from "@/lib/notificationBus";
 import { useToast } from "@/components/ui/toast";
 import { hideUrls } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
+import RichTextEditor from "@/components/common/RichTextEditor";
+import { SOCKET_URL } from "@/lib/config";
 
 
 interface IUser {
@@ -37,10 +39,11 @@ interface IMessage {
 interface IChannel {
   _id: string;
   name: string;
+  image?: { url: string; filename: string };
   members?: IUser[];
 }
 
-const SOCKET_URL = "http://72.60.97.98:6006";
+
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -54,7 +57,7 @@ const Dashboard = () => {
   const [channels, setChannels] = useState<IChannel[]>([]);
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [editorHtml, setEditorHtml] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
   const [uploadAbortController, setUploadAbortController] = useState<AbortController | null>(null);
@@ -66,6 +69,7 @@ const Dashboard = () => {
   const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
   // context / edit state for messages
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string | null } | null>(null);
@@ -290,7 +294,8 @@ const Dashboard = () => {
   /* ================= SEND TEXT ================= */
   const sendMessage = async () => {
     if (!socketRef.current || !activeChat) return;
-    if (!text.trim() && files.length === 0) return;
+    const plainText = editorHtml.replace(/<[^>]*>/g, '').trim();
+    if (!plainText && files.length === 0) return;
 
     if (files.length > 0) {
       const controller = new AbortController();
@@ -316,19 +321,19 @@ const Dashboard = () => {
       setFiles([]);
     }
 
-    if (text.trim()) {
+    if (editorHtml.trim() && editorHtml !== '<p></p>') {
       if (activeChat.type === "dm") {
         const rawWs = localStorage.getItem('currentWorkspace');
         const currentWs = rawWs ? JSON.parse(rawWs) : null;
         socketRef.current.emit("private message", {
           to: activeChat.id,
-          content: text.trim(),
+          content: editorHtml,
           workspaceId: currentWs?.id || null
         });
       } else {
         socketRef.current.emit("group message", {
           group: activeChat.id,
-          content: text.trim(),
+          content: editorHtml,
         });
       }
 
@@ -337,11 +342,12 @@ const Dashboard = () => {
         {
           from: myId,
           fromName: user?.name,
-          content: text.trim(),
+          content: editorHtml,
           createdAt: new Date().toISOString(),
         },
       ]);
 
+      setEditorHtml("");
       setText("");
     }
   };
@@ -430,7 +436,6 @@ const Dashboard = () => {
 
     if (msg) {
       setMessages((prev) => [...prev, msg]);
-      setFile(null);
     }
   };
 
@@ -469,22 +474,42 @@ const Dashboard = () => {
 
   return (
     <AppLayout>
+      {fullscreenImage && (
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center backdrop-blur-sm" onClick={() => setFullscreenImage(null)}>
+          <button onClick={() => setFullscreenImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all hover:rotate-90 duration-300 text-white z-[101]">
+            <X size={24} />
+          </button>
+          <img src={fullscreenImage} alt="Group" className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+      
       <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
 
         {/* SIDEBAR */}
-        <aside className="w-[280px] bg-[#1A1D21]/80 backdrop-blur-sm border-r border-purple-500/20 shadow-2xl flex flex-col overflow-hidden">
+        <aside className="w-[280px] bg-gradient-to-b from-[#1A1D21]/95 to-[#141619]/95 backdrop-blur-xl border-r border-purple-500/30 shadow-2xl flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-purple-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 bg-purple-500/20 rounded-lg">
+                <MessageSquare className="w-4 h-4 text-purple-400" />
+              </div>
+              <h3 className="text-sm font-bold text-white">Conversations</h3>
+            </div>
+          </div>
+          
           <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
 
           <div
             onClick={() => setShowChannels(!showChannels)}
-            className="flex items-center gap-2 cursor-pointer mb-3 px-3 py-2 rounded-lg hover:bg-purple-600/10 transition-all group"
+            className="flex items-center gap-2 cursor-pointer mb-3 px-3 py-2.5 rounded-xl hover:bg-purple-600/10 transition-all group border border-transparent hover:border-purple-500/20"
           >
-            {showChannels ? <ChevronDown size={18} className="text-purple-400 group-hover:text-purple-300" /> : <ChevronRight size={18} className="text-purple-400 group-hover:text-purple-300" />}
-            <span className="font-semibold text-gray-200 group-hover:text-white"># Channels</span>
+            {showChannels ? <ChevronDown size={18} className="text-purple-400 group-hover:text-purple-300 transition" /> : <ChevronRight size={18} className="text-purple-400 group-hover:text-purple-300 transition" />}
+            <Hash size={16} className="text-purple-400" />
+            <span className="font-semibold text-gray-200 group-hover:text-white transition">Channels</span>
+            <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{channels.length}</span>
           </div>
 
           {showChannels && (
-            <div className="space-y-1 mb-4">
+            <div className="space-y-2 mb-4">
               {channels.map((c) => (
                 <div
                   key={c._id}
@@ -493,16 +518,33 @@ const Dashboard = () => {
                     setActiveChat(ac)
                     try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
                   }}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer transition-all ${
+                  className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
                     activeChat?.id === c._id 
-                      ? 'bg-purple-600/20 text-white border border-purple-500/30' 
-                      : 'hover:bg-white/5 text-gray-300 hover:text-white'
+                      ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 text-white border border-purple-500/40 shadow-lg shadow-purple-900/20' 
+                      : 'hover:bg-purple-500/10 text-gray-300 hover:text-white border border-transparent hover:border-purple-500/20'
                   }`}
                 >
-                  <Hash size={16} className="text-purple-400" />
-                  <span className="text-sm font-medium">{c.name}</span>
+                  {c.image?.url ? (
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-purple-500 blur-md opacity-30 rounded-lg"></div>
+                      <img 
+                        src={c.image.url} 
+                        alt={c.name} 
+                        className="relative w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition border border-purple-500/30"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFullscreenImage(c.image!.url);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition">
+                      <Hash size={14} className="text-purple-400" />
+                    </div>
+                  )}
+                  <span className="text-sm font-medium flex-1">{c.name}</span>
                   {unreadCounts[c._id] > 0 && (
-                    <span className="ml-auto bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
+                    <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
                       {unreadCounts[c._id]}
                     </span>
                   )}
@@ -511,13 +553,17 @@ const Dashboard = () => {
             </div>
           )}
 
-          <hr className="my-4 border-purple-500/20" />
+          <hr className="my-4 border-purple-500/30" />
 
-          <div className="text-xs font-semibold text-gray-400 mb-3 px-3">
-            Direct Messages
+          <div className="flex items-center gap-2 mb-3 px-3">
+            <div className="p-1 bg-green-500/20 rounded">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            </div>
+            <span className="text-xs font-semibold text-gray-400">Direct Messages</span>
+            <span className="ml-auto text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{dmUsers.length}</span>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-2">
             {dmUsers.map((u) => {
               const isOnline = onlineUsers.includes(u._id || u.id || '');
               const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
@@ -529,10 +575,10 @@ const Dashboard = () => {
                     setActiveChat(ac)
                     try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
                   }}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
+                  className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
                     activeChat?.id === u._id 
-                      ? 'bg-purple-600/20 border border-purple-500/30' 
-                      : 'hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 border border-purple-500/40 shadow-lg shadow-purple-900/20' 
+                      : 'hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20'
                   }`}
                 >
                   <div className="relative" onClick={async (e) => { 
@@ -546,13 +592,13 @@ const Dashboard = () => {
                     <UserAvatar user={u} size="sm" />
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
-                        isOnline ? "bg-green-500" : "bg-gray-500"
+                        isOnline ? "bg-green-500 shadow-lg shadow-green-500/50" : "bg-gray-500"
                       }`}
                     />
                   </div>
-                  <span className="text-sm font-medium text-gray-200">{u.name}</span>
+                  <span className="text-sm font-medium text-gray-200 group-hover:text-white transition flex-1">{u.name}</span>
                   {hasUnread && (
-                    <span className="ml-auto bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
+                    <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
                       {unreadCounts[u._id || u.id || '']}
                     </span>
                   )}
@@ -563,22 +609,44 @@ const Dashboard = () => {
           </div>
         </aside>
 
-     {/* MAIN */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#0f1115]">
+        <main className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-[#0f1115] to-[#0a0b0d]">
           {!activeChat ? (
             <div className="flex items-center justify-center h-full">
-              <h1 className="text-2xl">Welcome Back {user?.name}</h1>
+              <div className="text-center">
+                <div className="relative inline-block mb-6">
+                  <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 rounded-full animate-pulse"></div>
+                  <div className="relative p-8 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-3xl border border-purple-500/30">
+                    <Sparkles className="w-20 h-20 text-purple-400" />
+                  </div>
+                </div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent mb-3">Welcome Back, {user?.name}!</h1>
+                <p className="text-gray-400 text-lg">Select a channel or start a conversation to begin</p>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col h-full">
-              {/* FIXED HEADER */}
-              <div className="flex-shrink-0 p-5 border-b border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/90 to-[#0f1115]/90 backdrop-blur-md shadow-lg">
+              <div className="flex-shrink-0 p-5 border-b border-purple-500/30 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-xl shadow-xl">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4">
                     {activeChat.type === 'group' ? (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg">
-                        <Hash size={20} />
-                      </div>
+                      channels.find(c => c._id === activeChat.id)?.image?.url ? (
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-purple-500 blur-lg opacity-40 rounded-xl"></div>
+                          <img 
+                            src={channels.find(c => c._id === activeChat.id)!.image!.url} 
+                            alt={activeChat.name} 
+                            className="relative w-12 h-12 rounded-xl object-cover cursor-pointer hover:opacity-80 transition shadow-xl border-2 border-purple-500/30"
+                            onClick={() => setFullscreenImage(channels.find(c => c._id === activeChat.id)!.image!.url)}
+                          />
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-purple-500 blur-lg opacity-40 rounded-xl"></div>
+                          <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-xl border-2 border-purple-500/30">
+                            <Hash size={22} />
+                          </div>
+                        </div>
+                      )
                     ) : (
                       <div 
                         className="cursor-pointer"
@@ -596,12 +664,37 @@ const Dashboard = () => {
                       </div>
                     )}
                     <div>
-                      <h2 className="font-bold text-lg text-white">{activeChat.name}</h2>
-                      <p className="text-xs text-purple-300">{activeChat.type === 'group' ? '# Channel' : 'Direct Message'}</p>
+                      <h2 className="font-bold text-xl text-white">{activeChat.name}</h2>
+                      <p className="text-xs text-purple-300 flex items-center gap-1.5">
+                        {activeChat.type === 'group' ? (
+                          <><Hash size={12} /> Channel</>
+                        ) : (
+                          <><MessageSquare size={12} /> Direct Message</>
+                        )}
+                      </p>
                     </div>
                   </div>
                   {selectedMessages.size > 0 && (
                     <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          if (selectedMessages.size === messages.length) {
+                            setSelectedMessages(new Set());
+                          } else {
+                            setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean)));
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg transition-all"
+                        title="Select All"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedMessages.size === messages.length && messages.length > 0}
+                          readOnly
+                          className="w-4 h-4 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
+                        />
+                        <span className="text-sm text-white font-medium">Select All</span>
+                      </button>
                       <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
                       <button 
                         onClick={() => {
@@ -762,7 +855,7 @@ const Dashboard = () => {
                             )}
                           </div>
                         ) : (
-                          hideUrls(m.content) && <div>{hideUrls(m.content)} {m.edited && <span className="text-[10px] text-gray-300">(edited)</span>}</div>
+                          m.content && <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
                         )}
                       </>
                     )}
@@ -843,67 +936,42 @@ const Dashboard = () => {
                   </div>
                 )}
                 <div className="flex items-center gap-3">
-                  {selectionMode && (
-                    <button
-                      onClick={() => {
-                        if (selectedMessages.size === messages.length) {
-                          setSelectedMessages(new Set());
-                        } else {
-                          setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean)));
-                        }
-                      }}
-                      className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105"
-                      title="Select All"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedMessages.size === messages.length && messages.length > 0}
-                        readOnly
-                        className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
-                      />
-                    </button>
-                  )}
-
-                  <input
-                    ref={inputRef}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && !uploadingFiles && sendMessage()
+                  <RichTextEditor
+                    content={editorHtml}
+                    onChange={setEditorHtml}
+                    onSubmit={sendMessage}
+                    placeholder={activeChat.type === 'dm' ? `Message ${activeChat.name}` : `Message #${activeChat.name}`}
+                    disabled={uploadingFiles}
+                    rightButtons={
+                      <>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const selectedFiles = Array.from(e.target.files || []);
+                            setFiles(prev => [...prev, ...selectedFiles]);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingFiles}
+                          className="p-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105 disabled:opacity-50"
+                        >
+                          <Plus size={18} className="text-purple-400" />
+                        </button>
+                        <button
+                          onClick={sendMessage}
+                          disabled={(!editorHtml.trim() || editorHtml === '<p></p>') && files.length === 0 || uploadingFiles}
+                          className="p-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 shadow-lg shadow-purple-900/50"
+                        >
+                          <Send size={18} />
+                        </button>
+                      </>
                     }
-                    disabled={uploadingFiles}
-                    className="flex-1 bg-[#2b2f36] border border-purple-500/20 rounded-xl px-5 py-3.5 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all placeholder:text-gray-500 disabled:opacity-50"
-                    placeholder="Type a message..."
                   />
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const selectedFiles = Array.from(e.target.files || []);
-                      setFiles(prev => [...prev, ...selectedFiles]);
-                      e.target.value = '';
-                    }}
-                  />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingFiles}
-                    className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105 disabled:opacity-50"
-                  >
-                    <Plus size={20} className="text-purple-400" />
-                  </button>
-
-                  <button
-                    onClick={sendMessage}
-                    disabled={(!text.trim() && files.length === 0) || uploadingFiles}
-                    className="p-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 shadow-lg shadow-purple-900/50"
-                  >
-                    <Send size={20} />
-                  </button>
-
                 </div>
               </div>
             </div>

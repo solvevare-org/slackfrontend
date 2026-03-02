@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { UserPlus, Mail, Lock, Sparkles, CheckCircle, AlertCircle } from 'lucide-react'
+import { API_URL } from '@/lib/config'
 
 const Signup = () => {
   const [searchParams] = useSearchParams()
@@ -17,7 +18,7 @@ const Signup = () => {
 
   useEffect(() => {
     if (!token) return
-    fetch(`http://72.60.97.98:6006/api/auth/invite/validate?token=${encodeURIComponent(token)}`)
+    fetch(`${API_URL}/api/auth/invite/validate?token=${encodeURIComponent(token)}`)
       .then(res => res.json())
       .then(data => {
         if (data.email) setInvite(data)
@@ -34,7 +35,7 @@ const Signup = () => {
       if (!localUser || !localToken) return
 
       try {
-        const res = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept-existing?token=${encodeURIComponent(token)}`, {
+        const res = await fetch(`${API_URL}/api/auth/invite/accept-existing?token=${encodeURIComponent(token)}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${localToken}` },
         })
@@ -63,7 +64,7 @@ const Signup = () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept?token=${encodeURIComponent(token)}`, {
+      const res = await fetch(`${API_URL}/api/auth/invite/accept?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, password }),

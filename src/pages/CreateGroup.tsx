@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
 import { Hash, Users, Image as ImageIcon, ArrowLeft, Check, X } from "lucide-react";
+import { API_URL } from "@/lib/config";
 
 interface IUser {
   _id: string;
@@ -22,12 +23,13 @@ const CreateGroup = () => {
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [currentWorkspace, setCurrentWorkspace] = useState<any>(null);
 
-  const API_URL = "http://72.60.97.98:6006";
+
 
   /* ================= FETCH WORKSPACE MEMBERS ================= */
   useEffect(() => {
     const token = localStorage.getItem("token");
     const raw = localStorage.getItem("currentWorkspace");
+    const userRaw = localStorage.getItem("user");
 
     if (!token) {
       navigate("/login");
@@ -47,6 +49,9 @@ const CreateGroup = () => {
       return;
     }
 
+    const currentUser = userRaw ? JSON.parse(userRaw) : null;
+    const currentUserId = currentUser?._id || currentUser?.id;
+
     fetch(`${API_URL}/api/workspaces/${cw.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -54,10 +59,12 @@ const CreateGroup = () => {
       .then((d) => {
         if (d?.success && Array.isArray(d.workspace?.members)) {
           setVisibleUsers(
-            d.workspace.members.map((m: any) => ({
-              _id: m._id,
-              name: m.name,
-            }))
+            d.workspace.members
+              .filter((m: any) => m._id !== currentUserId)
+              .map((m: any) => ({
+                _id: m._id,
+                name: m.name,
+              }))
           );
         } else {
           setVisibleUsers([]);

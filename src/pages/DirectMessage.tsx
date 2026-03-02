@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/toast";
 import { hideUrls } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
+import RichTextEditor from "@/components/common/RichTextEditor";
+import { API_URL, SOCKET_URL } from "@/lib/config";
 
 /* ================= TYPES ================= */
 interface IUser {
@@ -33,7 +35,7 @@ interface IMessage {
   };
 }
 
-const SOCKET_URL = "http://72.60.97.98:6006";
+
 
 const DirectMessage = () => {
   const navigate = useNavigate();
@@ -48,6 +50,7 @@ const DirectMessage = () => {
   const [activeDM, setActiveDM] = useState<IUser | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [text, setText] = useState("");
+  const [editorHtml, setEditorHtml] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
   const [uploadAbortController, setUploadAbortController] = useState<AbortController | null>(null);
@@ -255,7 +258,8 @@ const DirectMessage = () => {
   /* ================= SEND ================= */
   const sendMessage = async () => {
     if (!socketRef.current || !activeDM) return;
-    if (!text.trim() && files.length === 0) return;
+    const plainText = editorHtml.replace(/<[^>]*>/g, '').trim();
+    if (!plainText && files.length === 0) return;
 
     if (files.length > 0) {
       const controller = new AbortController();
@@ -281,13 +285,13 @@ const DirectMessage = () => {
       setFiles([]);
     }
 
-    if (text.trim()) {
+    if (editorHtml.trim() && editorHtml !== '<p></p>') {
       const rawWs = localStorage.getItem('currentWorkspace');
       const currentWs = rawWs ? JSON.parse(rawWs) : null;
 
       socketRef.current.emit("private message", {
         to: activeDM._id,
-        content: text.trim(),
+        content: editorHtml,
         workspaceId: currentWs?.id || null
       });
 
@@ -296,12 +300,13 @@ const DirectMessage = () => {
         {
           from: myId,
           fromName: user?.name,
-          content: text.trim(),
+          content: editorHtml,
           workspace: currentWs?.id || null,
           createdAt: new Date().toISOString(),
         },
       ]);
 
+      setEditorHtml("");
       setText("");
     }
   }; 
@@ -423,9 +428,16 @@ const DirectMessage = () => {
         {/* SIDEBAR */}
         <aside className="w-[280px] bg-[#1A1D21]/80 backdrop-blur-sm border-r border-purple-500/20 shadow-2xl flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
-
-          <div className="text-xs font-semibold text-gray-400 mb-3 px-3">
-            Direct Messages
+ 
+         <div className="flex items-center gap-2 mb-3 px-3">
+            <div className="p-1 bg-green-500/20 rounded">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              
+            </div>
+           
+            <span className="text-xs font-semibold text-gray-400">Direct Messages</span>
+               <hr className="my-4 border-purple-500/30" />
+            <span className="ml-auto text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{dmUsers.length}</span>
           </div>
 
           <div className="space-y-1">
@@ -500,6 +512,25 @@ const DirectMessage = () => {
                   </div>
                   {selectedMessages.size > 0 && (
                     <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          if (selectedMessages.size === messages.length) {
+                            setSelectedMessages(new Set());
+                          } else {
+                            setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean)));
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg transition-all"
+                        title="Select All"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedMessages.size === messages.length && messages.length > 0}
+                          readOnly
+                          className="w-4 h-4 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
+                        />
+                        <span className="text-sm text-white font-medium">Select All</span>
+                      </button>
                       <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
                       <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">Delete</button>
                       <button onClick={() => { setSelectedMessages(new Set()); setSelectionMode(false); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">Cancel</button>
@@ -627,7 +658,7 @@ const DirectMessage = () => {
                             )}
                           </div>
                         ) : (
-                          hideUrls(m.content) && <div>{hideUrls(m.content)} {m.edited && <span className="text-[10px] text-gray-300">(edited)</span>}</div>
+                          m.content && <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
                         )}
                       </>
                     )} 
@@ -699,15 +730,20 @@ const DirectMessage = () => {
                   </div>
                 )}
                 <div className="flex items-center gap-3">
-                  {selectionMode && (
-                    <button onClick={() => { if (selectedMessages.size === messages.length) setSelectedMessages(new Set()); else setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean))); }} className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105" title="Select All">
-                      <input type="checkbox" checked={selectedMessages.size === messages.length && messages.length > 0} readOnly className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer" />
-                    </button>
-                  )}
-                  <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !uploadingFiles && sendMessage()} disabled={uploadingFiles} className="flex-1 bg-[#2b2f36] border border-purple-500/20 rounded-xl px-5 py-3.5 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all placeholder:text-gray-500 disabled:opacity-50" placeholder="Type a message..." />
-                  <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { const selectedFiles = Array.from(e.target.files || []); setFiles(prev => [...prev, ...selectedFiles]); e.target.value = ''; }} />
-                  <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} className="p-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105 disabled:opacity-50"><Plus size={20} className="text-purple-400" /></button>
-                  <button onClick={sendMessage} disabled={(!text.trim() && files.length === 0) || uploadingFiles} className="p-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 shadow-lg shadow-purple-900/50"><Send size={20} /></button>
+                  <RichTextEditor
+                    content={editorHtml}
+                    onChange={setEditorHtml}
+                    onSubmit={sendMessage}
+                    placeholder={`Message ${activeDM.name}`}
+                    disabled={uploadingFiles}
+                    rightButtons={
+                      <>
+                        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { const selectedFiles = Array.from(e.target.files || []); setFiles(prev => [...prev, ...selectedFiles]); e.target.value = ''; }} />
+                        <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} className="p-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 transition-all hover:scale-105 disabled:opacity-50"><Plus size={18} className="text-purple-400" /></button>
+                        <button onClick={sendMessage} disabled={(!editorHtml.trim() || editorHtml === '<p></p>') && files.length === 0 || uploadingFiles} className="p-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 shadow-lg shadow-purple-900/50"><Send size={18} /></button>
+                      </>
+                    }
+                  />
                 </div>
               </div>
             </div>

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import AppLayout from "@/components/layout/AppLayout";
+import { API_URL } from "@/lib/config";
 
 interface IUser {
   _id: string;
@@ -47,7 +48,7 @@ const CreateCommunity = () => {
       return;
     }
 
-    fetch("http://72.60.97.98:6006/api/user/", {
+    fetch(`${API_URL}/api/user/`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -119,7 +120,7 @@ const CreateCommunity = () => {
       if (image) fd.append("image", image);
 
       const res = await fetch(
-        "http://72.60.97.98:6006/api/community",
+        `${API_URL}/api/community`,
         {
           method: "POST",
           body: fd,

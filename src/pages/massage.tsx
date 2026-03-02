@@ -6,6 +6,7 @@ import { ChevronDown, Send } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { hideUrls } from "@/lib/utils";
 import UserAvatar from "@/components/common/UserAvatar";
+import { SOCKET_URL } from "@/lib/config";
 
 /* ================= TYPES ================= */
 
@@ -29,7 +30,7 @@ interface IMessage {
   file?: { url?: string; filename?: string };
 }
 
-const SOCKET_URL = "http://72.60.97.98:6006";
+
 
 /* ================= COMPONENT ================= */
 
@@ -140,7 +141,9 @@ const Massage = () => {
       }
     });
 
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [myId, activeDM]);
 
   /* ================= LOAD MESSAGES ================= */
@@ -225,11 +228,10 @@ const Massage = () => {
                 <div
                   key={u._id || u.id}
                   onClick={() => setActiveDM(u)}
-                  className={`px-3 py-1 rounded cursor-pointer ${
-                    activeDM?._id === u._id
+                  className={`px-3 py-1 rounded cursor-pointer ${activeDM?._id === u._id
                       ? "bg-[#1164A3]"
                       : "hover:bg-white/5"
-                  }`}
+                    }`}
                 >
                   {u.name}
                 </div>
@@ -262,11 +264,10 @@ const Massage = () => {
                 return (
                   <div key={m.id}>
                     <div
-                      className={`max-w-md p-3 rounded ${
-                        isMine
+                      className={`max-w-md p-3 rounded ${isMine
                           ? "ml-auto bg-[#1164A3]"
                           : "bg-[#2b2f36]"
-                      }`}
+                        }`}
                     >
                       {safeContent && (
                         <div>

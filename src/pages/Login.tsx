@@ -5,6 +5,7 @@ import { FcGoogle } from "react-icons/fc";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoginSchema, type LoginSchemaType } from "@/schema/loginSchema";
+import { API_URL } from "@/lib/config";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -74,7 +75,7 @@ const Login = () => {
       setError("");
 
       const response = await fetch(
-        "http://72.60.97.98:6006/api/auth/login",
+        `${API_URL}/api/auth/login`,
         {
           method: "POST",
           headers: {
@@ -99,7 +100,7 @@ const Login = () => {
       const inviteToken = new URLSearchParams(window.location.search).get('token');
       if (inviteToken) {
         try {
-          const acceptRes = await fetch(`http://72.60.97.98:6006/api/auth/invite/accept-existing?token=${encodeURIComponent(inviteToken)}`, {
+          const acceptRes = await fetch(`${API_URL}/api/auth/invite/accept-existing?token=${encodeURIComponent(inviteToken)}`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${result.access}` },
           });
@@ -127,7 +128,7 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = 'http://72.60.97.98:6006/api/auth/google';
+    window.location.href = `${API_URL}/api/auth/google`;
   };
 
   return (

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Instagram, Facebook, Linkedin, MessageCircle, Upload } from "lucide-react";
+import { API_URL } from "@/lib/config";
 
 interface ProfileSessionProps {
   isOpen: boolean;
@@ -39,7 +40,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
     setUploading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://72.60.97.98:6006/api/user/${userId}/avatar`, {
+      const res = await fetch(`${API_URL}/api/user/${userId}/avatar`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -64,7 +65,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://72.60.97.98:6006/api/user/${userId}`, {
+      const res = await fetch(`${API_URL}/api/user/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

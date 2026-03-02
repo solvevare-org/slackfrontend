@@ -5,6 +5,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { emitNotification } from "@/lib/notificationBus";
 import { useToast } from "@/components/ui/toast";
 import { hideUrls } from "@/lib/utils";
+import { SOCKET_URL } from "@/lib/config";
 
 
 /* ================= TYPES ================= */
@@ -39,7 +40,7 @@ interface IWorkspace {
 
 /* ================= CONSTANT ================= */
 
-const SOCKET_URL = "http://72.60.97.98:6006";
+
 
 /* ================= COMPONENT ================= */
 
@@ -121,7 +122,9 @@ const GroupChat = () => {
       }
     });
 
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [myId, activeChat]);
 
   /* ================= AUTO SCROLL ================= */
@@ -193,11 +196,10 @@ const GroupChat = () => {
                   return (
                     <div key={m.id || index}>
                       <div
-                        className={`max-w-md p-3 rounded ${
-                          isMine
-                            ? "bg-purple-200 ml-auto"
-                            : "bg-gray-200"
-                        }`}
+                        className={`max-w-md p-3 rounded ${isMine
+                          ? "bg-purple-200 ml-auto"
+                          : "bg-gray-200"
+                          }`}
                       >
                         {safeContent && (
                           <div>

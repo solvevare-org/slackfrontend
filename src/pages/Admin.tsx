@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import { Mail, UserPlus, Share2, Facebook, MessageCircle, Instagram, ArrowLeft, CheckCircle } from "lucide-react";
+import { API_URL } from "@/lib/config";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -63,7 +64,7 @@ const Admin = () => {
 
       const body: any = { email, role, workspaceId: current.id };
 
-      const res = await fetch("http://72.60.97.98:6006/api/auth/invite", {
+      const res = await fetch(`${API_URL}/api/auth/invite`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -111,7 +112,7 @@ const Admin = () => {
     }
 
     try {
-      const url = new URL("http://72.60.97.98:6006/api/auth/invite/preview");
+      const url = new URL(`${API_URL}/api/auth/invite/preview`);
       url.searchParams.set("email", email);
       url.searchParams.set("role", role);
 

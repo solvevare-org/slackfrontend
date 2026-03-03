@@ -1,13 +1,11 @@
 import axios from 'axios';
 
-// Backend server configuration - Force production URL
-// Backend server configuration 
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-export const BACKEND_URL = isLocalhost ? 'http://localhost:6006' : 'http://72.60.97.98:6006';
+// Backend server configuration - reads from VITE_BACKEND_URL in .env
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:6006';
 
 
 // Frontend server configuration
-export const FRONTEND_PORT = 6007;
+export const FRONTEND_PORT = parseInt(import.meta.env.VITE_PORT || '6007', 10);
 export const FRONTEND_ALLOWED_HOSTS = true;
 
 // Centralized Axios instance

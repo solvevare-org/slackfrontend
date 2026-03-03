@@ -75,6 +75,7 @@ const Dashboard = () => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string | null } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { show } = useToast();
@@ -196,7 +197,10 @@ const Dashboard = () => {
 
     socket.on("group message", (msg: IMessage) => {
       if (activeChat?.type === "group" && msg.group === activeChat.id) {
-        setMessages((prev) => [...prev, msg]);
+        // Only add if not from me (avoid duplicate)
+        if (msg.from !== myId) {
+          setMessages((prev) => [...prev, msg]);
+        }
       } else if (msg.group && msg.from !== myId) {
         setUnreadCounts((prev) => ({
           ...prev,
@@ -745,19 +749,14 @@ const Dashboard = () => {
                   <div
                     onContextMenu={(e) => { 
                       e.preventDefault(); 
-                      if (!m.id) return; 
-                      const role = ((user?.role || user?.Role || '') as string).toLowerCase(); 
-                      if (String(m.from) !== String(myId) && role !== 'admin') return; 
+                      if (!m.id) return;
+                      // Only allow edit/delete for own messages
+                      if (String(m.from) !== String(myId)) return;
                       setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); 
                     }}
                     onClick={(e) => {
                       if (selectedMessages.size > 0 && m.id) {
                         toggleMessageSelection(m.id);
-                      } else if (m.id && String(m.from) === String(myId)) {
-                        const role = ((user?.role || user?.Role || '') as string).toLowerCase();
-                        if (String(m.from) === String(myId) || role === 'admin') {
-                          setContextMenu({ x: e.clientX, y: e.clientY, id: m.id });
-                        }
                       }
                     }}
                     className={`relative transition-all duration-200 hover:scale-[1.02] cursor-pointer ${
@@ -773,21 +772,106 @@ const Dashboard = () => {
                   >
 
                     {editingId === m.id ? (
-                      <div className="flex gap-2">
-                        <input autoFocus value={editingText} onChange={(e) => setEditingText(e.target.value)} onKeyDown={async (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); const token = localStorage.getItem('token'); if (!token) return; const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${m.id}` : `${SOCKET_URL}/api/message/${m.id}`; try { const res = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ content: editingText }) }); if (!res.ok) { const err = await res.json().catch(()=>({})); show(err?.msg || 'Update failed', 'error'); return; } const d = await res.json(); const updated = d?.message; setMessages(prev => prev.map(x => x.id === updated.id ? { ...x, content: updated.content, edited: updated.edited } : x)); setEditingId(null); setEditingText(''); show('Message updated', 'success'); } catch (e) { console.error(e); show('Update failed', 'error'); } } else if (ev.key === 'Escape') { setEditingId(null); setEditingText(''); } }} className="flex-1 bg-white/5 px-2 py-1 rounded text-sm outline-none" />
-                        <button onClick={async () => {
-                          const token = localStorage.getItem('token'); if (!token) return;
-                          const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${m.id}` : `${SOCKET_URL}/api/message/${m.id}`;
-                          try {
-                            const res = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ content: editingText }) });
-                            if (!res.ok) { const err = await res.json().catch(()=>({})); show(err?.msg || 'Update failed', 'error'); return; }
-                            const d = await res.json(); const updated = d?.message;
-                            setMessages(prev => prev.map(x => x.id === updated.id ? { ...x, content: updated.content, edited: updated.edited } : x));
-                            setEditingId(null); setEditingText('');
-                            show('Message updated', 'success');
-                          } catch (e) { console.error(e); show('Update failed', 'error'); }
-                        }} className="px-2 bg-green-600 text-white rounded">Save</button>
-                        <button onClick={() => { setEditingId(null); setEditingText(''); }} className="px-2 bg-white/10 text-white rounded">Cancel</button>
+                      <div className="flex flex-col gap-2 w-full">
+                        <textarea 
+                          autoFocus 
+                          value={editingText} 
+                          onChange={(e) => setEditingText(e.target.value)} 
+                          onKeyDown={async (ev) => { 
+                            if (ev.key === 'Enter' && !ev.shiftKey) { 
+                              ev.preventDefault();
+                              if (savingEdit) return;
+                              setSavingEdit(true);
+                              const token = localStorage.getItem('token'); 
+                              if (!token) { setSavingEdit(false); return; }
+                              const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${m.id}` : `${SOCKET_URL}/api/message/${m.id}`; 
+                              try { 
+                                const res = await fetch(endpoint, { 
+                                  method: 'PUT', 
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, 
+                                  body: JSON.stringify({ content: editingText }) 
+                                }); 
+                                if (!res.ok) { 
+                                  const err = await res.json().catch(()=>({})); 
+                                  show(err?.msg || 'Update failed', 'error');
+                                  setSavingEdit(false);
+                                  return; 
+                                } 
+                                const d = await res.json(); 
+                                const updated = d?.message; 
+                                setMessages(prev => prev.map(x => x.id === updated.id ? { ...x, content: updated.content, edited: true } : x)); 
+                                setEditingId(null); 
+                                setEditingText('');
+                                setSavingEdit(false);
+                                show('Message updated', 'success'); 
+                              } catch (e) { 
+                                console.error(e); 
+                                show('Update failed', 'error');
+                                setSavingEdit(false);
+                              } 
+                            } else if (ev.key === 'Escape') { 
+                              setEditingId(null); 
+                              setEditingText(''); 
+                            } 
+                          }} 
+                          className="flex-1 bg-white/10 px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-purple-500 resize-none min-h-[60px] text-white"
+                          placeholder="Edit your message..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <button 
+                            onClick={async () => {
+                              if (savingEdit) return;
+                              setSavingEdit(true);
+                              const token = localStorage.getItem('token'); 
+                              if (!token) { setSavingEdit(false); return; }
+                              const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${m.id}` : `${SOCKET_URL}/api/message/${m.id}`;
+                              try {
+                                const res = await fetch(endpoint, { 
+                                  method: 'PUT', 
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, 
+                                  body: JSON.stringify({ content: editingText }) 
+                                });
+                                if (!res.ok) { 
+                                  const err = await res.json().catch(()=>({})); 
+                                  show(err?.msg || 'Update failed', 'error');
+                                  setSavingEdit(false);
+                                  return; 
+                                }
+                                const d = await res.json(); 
+                                const updated = d?.message;
+                                setMessages(prev => prev.map(x => x.id === updated.id ? { ...x, content: updated.content, edited: true } : x));
+                                setEditingId(null); 
+                                setEditingText('');
+                                setSavingEdit(false);
+                                show('Message updated', 'success');
+                              } catch (e) { 
+                                console.error(e); 
+                                show('Update failed', 'error');
+                                setSavingEdit(false);
+                              }
+                            }} 
+                            disabled={savingEdit}
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition flex items-center gap-2"
+                          >
+                            {savingEdit ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Saving...
+                              </>
+                            ) : (
+                              'Save'
+                            )}
+                          </button>
+                          <button 
+                            onClick={() => { 
+                              setEditingId(null); 
+                              setEditingText(''); 
+                            }} 
+                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -855,7 +939,12 @@ const Dashboard = () => {
                             )}
                           </div>
                         ) : (
-                          m.content && <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
+                          m.content && (
+                            <div>
+                              <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
+                              {m.edited && <span className="text-[10px] text-gray-400 italic mt-1 block">(edited)</span>}
+                            </div>
+                          )
                         )}
                       </>
                     )}
@@ -869,13 +958,29 @@ const Dashboard = () => {
                 })}
 
                 {contextMenu && (
-                  <div ref={menuRef} style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 60 }}>
-                    <div className="flex flex-col bg-[#0f1115] border border-white/10 rounded shadow-lg">
+                  <div 
+                    ref={menuRef} 
+                    style={{ 
+                      position: 'fixed', 
+                      left: Math.min(contextMenu.x, window.innerWidth - 320), 
+                      top: Math.min(contextMenu.y, window.innerHeight - 200), 
+                      zIndex: 60 
+                    }}
+                  >
+                    <div className="flex flex-col bg-gradient-to-br from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl">
                       {confirmDeleteId === contextMenu.id ? (
-                        <div className="p-3 text-sm text-white">
-                          Are you sure?
-                          <div className="flex gap-2 mt-3">
-                            <button className="px-3 py-1 bg-red-600 rounded text-white text-sm" onClick={async () => {
+                        <div className="p-5 text-sm text-white min-w-[280px]">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-red-500/20 rounded-full">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <div>
+                              <p className="font-bold text-white text-base">Delete Message?</p>
+                              <p className="text-xs text-gray-400 mt-0.5">This action cannot be undone</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-semibold transition-all hover:scale-105 shadow-lg" onClick={async () => {
                               const id = contextMenu.id; setContextMenu(null); setConfirmDeleteId(null); if (!id) return; const token = localStorage.getItem('token'); if (!token) return;
                               const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${id}` : `${SOCKET_URL}/api/message/${id}`;
                               try {
@@ -884,17 +989,28 @@ const Dashboard = () => {
                                 setMessages(prev => prev.filter(x => x.id !== id));
                                 show('Message deleted', 'success');
                               } catch (e) { console.error(e); show('Delete failed', 'error'); }
-                            }}>Yes</button>
-                            <button className="px-3 py-1 bg-white/10 rounded text-white text-sm" onClick={() => { setConfirmDeleteId(null); setContextMenu(null); }}>No</button>
+                            }}>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              Yes
+                            </button>
+                            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 rounded-lg text-white text-sm font-semibold transition-all hover:scale-105 shadow-lg" onClick={() => { setConfirmDeleteId(null); setContextMenu(null); }}>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              No
+                            </button>
                           </div>
                         </div>
                       ) : (
                         <>
-                          <button className="px-3 py-2 bg-green-600 text-white text-sm" onClick={() => {
+                          <button className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => {
                             const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
-                            setEditingId(id); setEditingText(found.content || ''); setContextMenu(null);
-                          }}>Edit</button>
-                          <button className="px-3 py-2 bg-red-600 text-white text-sm" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                            const plainText = (found.content || '').replace(/<[^>]*>/g, '');
+                            setEditingId(id); setEditingText(plainText); setContextMenu(null);
+                          }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Edit
+                          </button>
+                          <button className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                             Delete
                           </button>
                         </>

@@ -87,7 +87,14 @@ const Header: React.FC = () => {
         }
 
         const data = await res.json();
-        setWorkspaces(data.workspaces || []);
+        const wsList = data.workspaces || [];
+        setWorkspaces(wsList);
+        // Auto-select if only one workspace and no current workspace
+        if (wsList.length === 1 && !currentWorkspace) {
+          const ws = wsList[0];
+          try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); } catch(e){}
+          setCurrentWorkspace(ws);
+        }
       } catch (e) {
         console.error('Header: fetchWorkspaces error', e);
       }
@@ -191,9 +198,13 @@ const Header: React.FC = () => {
 
   const openWorkspace = (ws: IWorkspace) => {
     const namePart = encodeURIComponent(ws.name);
-    try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); } catch(e){}
+    try { 
+      localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); 
+      localStorage.removeItem('activeChat'); // Clear active chat when switching workspace
+    } catch(e){}
     setCurrentWorkspace(ws);
-    navigate(`/dashboard/${namePart}/${ws._id}`);
+    // Force page reload to refresh workspace data
+    window.location.href = `/dashboard/${namePart}/${ws._id}`;
   };
 
   return (
@@ -214,28 +225,49 @@ const Header: React.FC = () => {
         <div className="flex items-center gap-4 w-1/4">
           {/* <div className="text-lg font-semibold">WORK SPACE</div> */}
           <div className="relative flex items-center gap-2">
-            <button
-              onClick={() => setOpen(!open)}
-              className="text-sm text-white bg-purple-600/20 hover:bg-purple-600/30 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 transition-all shadow-lg"
-            >
-              {currentWorkspace?.image ? (
-                <img 
-                  src={`${API_URL}${currentWorkspace.image}`} 
-                  alt={currentWorkspace.name} 
-                  className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
-                  }}
-                />
-              ) : (
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                  {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
-                </div>
-              )}
-              <span className="font-semibold">{currentWorkspace ? currentWorkspace.name : 'Select workspace'}</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </button>
+            {workspaces.length === 1 ? (
+              <div className="text-sm text-white bg-purple-600/20 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 shadow-lg">
+                {currentWorkspace?.image ? (
+                  <img 
+                    src={`${API_URL}${currentWorkspace.image}`} 
+                    alt={currentWorkspace.name} 
+                    className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
+                    }}
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                    {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
+                  </div>
+                )}
+                <span className="font-semibold">{currentWorkspace?.name || 'Workspace'}</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setOpen(!open)}
+                className="text-sm text-white bg-purple-600/20 hover:bg-purple-600/30 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 transition-all shadow-lg"
+              >
+                {currentWorkspace?.image ? (
+                  <img 
+                    src={`${API_URL}${currentWorkspace.image}`} 
+                    alt={currentWorkspace.name} 
+                    className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
+                    }}
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                    {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
+                  </div>
+                )}
+                <span className="font-semibold">{currentWorkspace ? currentWorkspace.name : 'Select workspace'}</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+              </button>
+            )}
        
 
             {open && (

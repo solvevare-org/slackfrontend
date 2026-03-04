@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { onNotification, emitAction, NotificationPayload } from "@/lib/notificationBus";
+import { onNotification, emitAction, onAction, NotificationPayload } from "@/lib/notificationBus";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Home,
@@ -75,6 +75,32 @@ const Sidebar: React.FC = () => {
       setUnread((prev) => prev + 1);
     });
     return off;
+  }, []);
+
+  /* 🔔 Clear Notifications Listener */
+  useEffect(() => {
+    const handler = (payload: any) => {
+      if (payload?.action === 'clear-notifications' && payload?.data) {
+        const { chatId, chatType } = payload.data;
+        setActivities((prev) => {
+          const filtered = prev.filter(item => {
+            if (chatType === 'dm' && item.type === 'private') {
+              return item.from !== chatId;
+            } else if (chatType === 'group' && item.type === 'group') {
+              return item.groupId !== chatId;
+            }
+            return true;
+          });
+          const removedCount = prev.length - filtered.length;
+          if (removedCount > 0) {
+            setUnread((u) => Math.max(0, u - removedCount));
+          }
+          return filtered;
+        });
+      }
+    };
+    const offAction = onAction(handler);
+    return offAction;
   }, []);
 
   // close activity modal on ESC
@@ -254,7 +280,7 @@ const Sidebar: React.FC = () => {
                                     <span className="font-medium text-purple-300">{it.file.filename}</span>
                                   </span>
                                 ) : (
-                                  it.message || 'New notification'
+                                  (it.message || 'New notification').replace(/<[^>]*>/g, '')
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-2">

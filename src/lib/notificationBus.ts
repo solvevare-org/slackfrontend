@@ -12,7 +12,7 @@ export type NotificationPayload = {
 
 // action payload for cross-component commands (e.g. open-chat)
 export type ActionPayload = {
-  action: 'open-chat' | string;
+  action: 'open-chat' | 'clear-notifications' | string;
   data?: any;
 };
 
@@ -44,4 +44,8 @@ export function onAction(handler: (payload: ActionPayload) => void) {
   return () => bus.removeEventListener("action", h as EventListener);
 }
 
-export default { emitNotification, onNotification, emitAction, onAction };
+export function clearNotifications(chatId: string, chatType: 'dm' | 'group') {
+  emitAction({ action: 'clear-notifications', data: { chatId, chatType } });
+}
+
+export default { emitNotification, onNotification, emitAction, onAction, clearNotifications };

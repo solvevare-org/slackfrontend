@@ -3,11 +3,12 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import AppLayout from "@/components/layout/AppLayout";
 import { ChevronRight, ChevronDown, Hash, Send, Plus, X, MessageSquare, Sparkles } from "lucide-react";
-import { emitNotification, onAction } from "@/lib/notificationBus";
+import { emitNotification, onAction, clearNotifications } from "@/lib/notificationBus";
 import { useToast } from "@/components/ui/toast";
 import { hideUrls } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
+import GroupProfileSession from "@/components/layout/GroupProfileSession";
 import RichTextEditor from "@/components/common/RichTextEditor";
 import { SOCKET_URL } from "@/lib/config";
 
@@ -28,6 +29,8 @@ interface IMessage {
   edited?: boolean;
   createdAt?: string;
   group?: string;
+  isSystemMessage?: boolean;
+  systemMessageType?: 'group-name-updated' | 'group-picture-updated' | 'member-removed';
   file?: {
     url: string;
     filename?: string;
@@ -66,10 +69,14 @@ const Dashboard = () => {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
+  const [groupProfileOpen, setGroupProfileOpen] = useState(false);
+  const [viewingGroupId, setViewingGroupId] = useState<string | null>(null);
   const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [removedFromGroups, setRemovedFromGroups] = useState<Set<string>>(new Set());
+  const [shownNotifications, setShownNotifications] = useState<Set<string>>(new Set());
 
   // context / edit state for messages
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string | null } | null>(null);
@@ -86,15 +93,21 @@ const Dashboard = () => {
     name: string;
   } | null>(null);
 
-  // restore active chat after reload
+  // restore active chat after reload - but clear it when workspace changes
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('activeChat')
-      if (raw) {
-        const ac = JSON.parse(raw)
-        if (ac && ac.id) setActiveChat(ac)
-      }
-    } catch (e) {}
+    const rawWorkspace = localStorage.getItem("currentWorkspace");
+    const currentWs = rawWorkspace ? JSON.parse(rawWorkspace) : null;
+    const lastWsId = localStorage.getItem("lastWorkspaceId");
+    
+    // If workspace changed, clear active chat
+    if (currentWs?.id && lastWsId && currentWs.id !== lastWsId) {
+      setActiveChat(null);
+      localStorage.removeItem('activeChat');
+    }
+    
+    if (currentWs?.id) {
+      localStorage.setItem("lastWorkspaceId", currentWs.id);
+    }
   }, [])
 
   const myId = useMemo(() => user?._id || user?.id || "", [user]);
@@ -154,7 +167,56 @@ const Dashboard = () => {
 
     socketRef.current = socket;
 
-    socket.on("online users", (users: string[]) => {
+    // Fetch stored notifications only after socket connects
+    socket.on('connect', () => {
+      const rawWorkspace = localStorage.getItem("currentWorkspace");
+      const currentWs = rawWorkspace ? JSON.parse(rawWorkspace) : null;
+      if (!currentWs?.id) return;
+      
+      const lastChecked = localStorage.getItem("lastCheckedWorkspace");
+      const lastWs = lastChecked ? JSON.parse(lastChecked) : null;
+      
+      // Only fetch notifications if workspace changed
+      if (!lastWs || String(lastWs.id) !== String(currentWs.id)) {
+        localStorage.setItem("lastCheckedWorkspace", JSON.stringify(currentWs));
+        
+        fetch(`${SOCKET_URL}/api/notifications?workspaceId=${currentWs.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.success && data.notifications && data.notifications.length > 0) {
+              data.notifications.forEach((notif: any) => {
+                try {
+                  const notifKey = `${notif.type}-${notif.groupId || notif.from?._id}-${notif.message}`;
+                  setShownNotifications(prev => {
+                    if (prev.has(notifKey)) return prev;
+                    const newSet = new Set(prev);
+                    newSet.add(notifKey);
+                    emitNotification({
+                      type: notif.type,
+                      from: notif.from?._id,
+                      groupId: notif.groupId,
+                      title: notif.title,
+                      message: notif.message
+                    });
+                    return newSet;
+                  });
+                } catch (e) {}
+              });
+              const ids = data.notifications.map((n: any) => n._id);
+              fetch(`${SOCKET_URL}/api/notifications/mark-read`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notificationIds: ids })
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+    });
+
+socket.on("online users", (users: string[]) => {
       setOnlineUsers(users);
     });
 
@@ -196,15 +258,25 @@ const Dashboard = () => {
     });
 
     socket.on("group message", (msg: IMessage) => {
+      // Block all messages from groups user was removed from
+      if (msg.group && removedFromGroups.has(msg.group)) return;
+      
+      // Only show notifications for current workspace groups
+      const rawWs = localStorage.getItem('currentWorkspace');
+      const currentWs = rawWs ? JSON.parse(rawWs) : null;
+      const isCurrentWorkspaceGroup = channels.some(c => c._id === msg.group);
+      if (!isCurrentWorkspaceGroup) return;
+      
       if (activeChat?.type === "group" && msg.group === activeChat.id) {
         // Only add if not from me (avoid duplicate)
         if (msg.from !== myId) {
           setMessages((prev) => [...prev, msg]);
         }
       } else if (msg.group && msg.from !== myId) {
+        const groupId = msg.group;
         setUnreadCounts((prev) => ({
           ...prev,
-          [msg.group]: (prev[msg.group] || 0) + 1,
+          [groupId]: (prev[groupId] || 0) + 1,
         }));
         try {
           emitNotification({
@@ -227,8 +299,72 @@ const Dashboard = () => {
       setMessages(prev => prev.filter(m => String(m.id) !== String(payload.id)));
     });
 
-    return () => { socket.disconnect(); };
-  }, [myId, activeChat]);
+    socket.on('group-added-notification', (data: any) => {
+      const notifKey = `group-${data.groupId}-${data.message}`;
+      setShownNotifications(prev => {
+        if (prev.has(notifKey)) return prev;
+        const newSet = new Set(prev);
+        newSet.add(notifKey);
+        
+        const rawWs = localStorage.getItem('currentWorkspace');
+        const currentWs = rawWs ? JSON.parse(rawWs) : null;
+        const token = localStorage.getItem('token');
+        
+        if (token && data.groupId) {
+          fetch(`${SOCKET_URL}/api/group/${data.groupId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+            .then(r => r.json())
+            .then(res => {
+              if (res.success && res.group) {
+                const groupWorkspaceId = res.group.workspace;
+                if (currentWs?.id && String(groupWorkspaceId) === String(currentWs.id)) {
+                  try {
+                    emitNotification({
+                      type: 'group',
+                      groupId: data.groupId,
+                      title: data.groupName,
+                      message: data.message
+                    });
+                  } catch (e) {}
+                }
+              }
+            })
+            .catch(() => {});
+        }
+        return newSet;
+      });
+    });
+
+    socket.on('member-removed-notification', (data: any) => {
+      const notifKey = `group-${data.groupId}-${data.message}`;
+      setShownNotifications(prev => {
+        if (prev.has(notifKey)) return prev;
+        const newSet = new Set(prev);
+        newSet.add(notifKey);
+        
+        const isCurrentWorkspaceGroup = channels.some(c => c._id === data.groupId);
+        
+        if (isCurrentWorkspaceGroup) {
+          try {
+            emitNotification({
+              type: 'group',
+              groupId: data.groupId,
+              title: data.groupName,
+              message: data.message
+            });
+            setRemovedFromGroups(prevRemoved => new Set(prevRemoved).add(data.groupId));
+            setChannels(prevChannels => prevChannels.filter(c => c._id !== data.groupId));
+          } catch (e) {}
+        }
+        return newSet;
+      });
+    });
+
+    return () => { 
+      socket.disconnect();
+    };
+  }, [myId, activeChat, removedFromGroups]);
 
   /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
@@ -259,6 +395,9 @@ const Dashboard = () => {
       [activeChat.id]: 0,
     }));
 
+    // Clear notifications for this chat
+    clearNotifications(activeChat.id, activeChat.type);
+
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [activeChat]);
 
@@ -271,10 +410,21 @@ const Dashboard = () => {
         setActiveChat({ type: chat.type, id: chat.id, name: chat.name || '' });
         try { localStorage.setItem('activeChat', JSON.stringify({ type: chat.type, id: chat.id, name: chat.name || '' })); } catch (e) {}
         setUnreadCounts((prev) => ({ ...prev, [chat.id]: 0 }));
+      } else if (payload?.action === 'group-updated' && payload?.data) {
+        const { groupId, name, image } = payload.data;
+        setChannels((prev) => prev.map(c => c._id === groupId ? { ...c, name, image } : c));
+        if (activeChat?.id === groupId) {
+          setActiveChat((prev) => prev ? { ...prev, name } : null);
+        }
+      } else if (payload?.action === 'open-profile' && payload?.data?.user) {
+        setGroupProfileOpen(false);
+        setViewingGroupId(null);
+        setViewingUser(payload.data.user);
+        setProfileOpen(true);
       }
     });
     return off;
-  }, []);
+  }, [activeChat]);
 
   // close context menu when clicking outside
   useEffect(() => {
@@ -298,6 +448,13 @@ const Dashboard = () => {
   /* ================= SEND TEXT ================= */
   const sendMessage = async () => {
     if (!socketRef.current || !activeChat) return;
+    
+    // Block sending if removed from group
+    if (activeChat.type === 'group' && removedFromGroups.has(activeChat.id)) {
+      show('You cannot send messages. Admin removed you from this group.', 'error');
+      return;
+    }
+    
     const plainText = editorHtml.replace(/<[^>]*>/g, '').trim();
     if (!plainText && files.length === 0) return;
 
@@ -407,6 +564,12 @@ const Dashboard = () => {
   /* ================= FILE UPLOAD ================= */
   const uploadFile = async (f: File, signal?: AbortSignal) => {
     if (!activeChat) return;
+    
+    // Block file upload if removed from group
+    if (activeChat.type === 'group' && removedFromGroups.has(activeChat.id)) {
+      show('You cannot send files. Admin removed you from this group.', 'error');
+      return;
+    }
 
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -484,9 +647,7 @@ const Dashboard = () => {
             <X size={24} />
           </button>
           <img src={fullscreenImage} alt="Group" className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
-      
+        </div>  )}
       <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
 
         {/* SIDEBAR */}
@@ -518,7 +679,7 @@ const Dashboard = () => {
                 <div
                   key={c._id}
                   onClick={() => {
-                    const ac = { type: "group", id: c._id, name: c.name }
+                    const ac = { type: "group" as const, id: c._id, name: c.name }
                     setActiveChat(ac)
                     try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
                   }}
@@ -537,7 +698,8 @@ const Dashboard = () => {
                         className="relative w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition border border-purple-500/30"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setFullscreenImage(c.image!.url);
+                          setViewingGroupId(c._id);
+                          setGroupProfileOpen(true);
                         }}
                       />
                     </div>
@@ -575,7 +737,7 @@ const Dashboard = () => {
                 <div
                   key={u._id}
                   onClick={() => {
-                    const ac = { type: "dm", id: u._id!, name: u.name! }
+                    const ac = { type: "dm" as const, id: u._id!, name: u.name! }
                     setActiveChat(ac)
                     try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
                   }}
@@ -617,11 +779,8 @@ const Dashboard = () => {
           {!activeChat ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="relative inline-block mb-6">
-                  <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-30 rounded-full animate-pulse"></div>
-                  <div className="relative p-8 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-3xl border border-purple-500/30">
-                    <Sparkles className="w-20 h-20 text-purple-400" />
-                  </div>
+                <div className="w-24 h-24 bg-gradient-to-br from-white to-gray-100 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-2xl">
+                  <span className="text-[#4A154B] font-bold text-5xl">SV</span>
                 </div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent mb-3">Welcome Back, {user?.name}!</h1>
                 <p className="text-gray-400 text-lg">Select a channel or start a conversation to begin</p>
@@ -640,13 +799,16 @@ const Dashboard = () => {
                             src={channels.find(c => c._id === activeChat.id)!.image!.url} 
                             alt={activeChat.name} 
                             className="relative w-12 h-12 rounded-xl object-cover cursor-pointer hover:opacity-80 transition shadow-xl border-2 border-purple-500/30"
-                            onClick={() => setFullscreenImage(channels.find(c => c._id === activeChat.id)!.image!.url)}
+                            onClick={() => { setViewingGroupId(activeChat.id); setGroupProfileOpen(true); }}
                           />
                         </div>
                       ) : (
                         <div className="relative">
                           <div className="absolute inset-0 bg-purple-500 blur-lg opacity-40 rounded-xl"></div>
-                          <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-xl border-2 border-purple-500/30">
+                          <div 
+                            className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-xl border-2 border-purple-500/30 cursor-pointer hover:opacity-80 transition"
+                            onClick={() => { setViewingGroupId(activeChat.id); setGroupProfileOpen(true); }}
+                          >
                             <Hash size={22} />
                           </div>
                         </div>
@@ -695,7 +857,7 @@ const Dashboard = () => {
                           type="checkbox"
                           checked={selectedMessages.size === messages.length && messages.length > 0}
                           readOnly
-                          className="w-4 h-4 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
+                          className="w-4 h-4 rounded border-2 border-purple-500 bg-purple-900/30 checked:bg-purple-600 cursor-pointer"
                         />
                         <span className="text-sm text-white font-medium">Select All</span>
                       </button>
@@ -723,6 +885,17 @@ const Dashboard = () => {
               {/* SCROLLABLE MESSAGES */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
                 {messages.map((m, idx) => {
+                  // System message rendering
+                  if (m.isSystemMessage) {
+                    return (
+                      <div key={m.id || `msg-${idx}`} className="flex justify-center my-4">
+                        <div className="text-center text-gray-400 text-sm italic px-4 py-2">
+                          &quot;{m.content}&quot;
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const isImage = m.file && ((m.file.mimetype && m.file.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file.filename || m.file.url || '')));
                   const isMine = m.from === myId;
                   const msgUser = isMine ? user : dmUsers.find(u => (u._id || u.id) === m.from);
@@ -742,7 +915,7 @@ const Dashboard = () => {
                         type="checkbox"
                         checked={selectedMessages.has(m.id || '')}
                         onChange={() => m.id && toggleMessageSelection(m.id)}
-                        className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
+                        className="w-5 h-5 rounded border-2 border-purple-500 bg-purple-900/30 checked:bg-purple-600 cursor-pointer"
                       />
                     </div>
                   )}
@@ -911,7 +1084,7 @@ const Dashboard = () => {
                               </div>
                             )}
                           </div>
-                        ) : m.file && /\.(rar|zip)$/i.test(m.file?.filename || '') ? (
+                        ) : m.file && /\.(xlsx?|docx?|txt|mp4|avi|mov|mkv|rar|zip)$/i.test(m.file?.filename || '') ? (
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -928,10 +1101,34 @@ const Dashboard = () => {
                               </div>
                             ) : (
                               <div className="h-full p-6 flex flex-col items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                <span className="text-purple-400 font-bold text-2xl mt-3">{m.file?.filename?.split('.').pop()?.toUpperCase()}</span>
+                                {/\.(mp4|avi|mov|mkv)$/i.test(m.file?.filename || '') ? (
+                                  <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                    <span className="text-blue-400 font-bold text-2xl mt-3">VIDEO</span>
+                                  </>
+                                ) : /\.(xlsx?|csv)$/i.test(m.file?.filename || '') ? (
+                                  <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="12" y1="9" x2="12" y2="17"/></svg>
+                                    <span className="text-green-400 font-bold text-2xl mt-3">EXCEL</span>
+                                  </>
+                                ) : /\.(docx?|odt)$/i.test(m.file?.filename || '') ? (
+                                  <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                    <span className="text-blue-400 font-bold text-2xl mt-3">WORD</span>
+                                  </>
+                                ) : /\.txt$/i.test(m.file?.filename || '') ? (
+                                  <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                    <span className="text-purple-400 font-bold text-2xl mt-3">TEXT</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    <span className="text-purple-400 font-bold text-2xl mt-3">{m.file?.filename?.split('.').pop()?.toUpperCase()}</span>
+                                  </>
+                                )}
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file.filename || 'File'}</div>
-                                <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file.url, m.file.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
+                                <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                   Download
                                 </button>
@@ -1001,17 +1198,21 @@ const Dashboard = () => {
                         </div>
                       ) : (
                         <>
-                          <button className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => {
+                          <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-green-900/50" onClick={() => {
                             const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
                             const plainText = (found.content || '').replace(/<[^>]*>/g, '');
                             setEditingId(id); setEditingText(plainText); setContextMenu(null);
                           }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit
+                            <div className="p-1.5 bg-white/20 rounded-lg">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </div>
+                            <span>Edit Message</span>
                           </button>
-                          <button className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                            Delete
+                          <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-red-900/50" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                            <div className="p-1.5 bg-white/20 rounded-lg">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                            </div>
+                            <span>Delete Message</span>
                           </button>
                         </>
                       )}
@@ -1023,7 +1224,13 @@ const Dashboard = () => {
 
               {/* FIXED INPUT FIELD */}
               <div className="flex-shrink-0 p-5 border-t border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-md shadow-2xl">
-                {uploadingFiles && (
+                {activeChat.type === 'group' && removedFromGroups.has(activeChat.id) ? (
+                  <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-center">
+                    <p className="text-red-400 font-medium">You are not in the group. Admin removed you.</p>
+                  </div>
+                ) : (
+                  <>
+                    {uploadingFiles && (
                   <div className="mb-3 p-4 bg-green-900/20 rounded-xl border border-green-500/30">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1089,12 +1296,15 @@ const Dashboard = () => {
                     }
                   />
                 </div>
+                  </>
+                )}
               </div>
             </div>
           )}
         </main>
       </div>
       <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser} isOwnProfile={false} />
+      <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(null); }} groupId={viewingGroupId} />
     </AppLayout>
   );
 };

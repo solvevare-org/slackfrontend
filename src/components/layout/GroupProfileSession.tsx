@@ -3,6 +3,7 @@ import { X, Hash, Users, Crown, Edit2, UserMinus, Upload, UserPlus } from "lucid
 import { SOCKET_URL } from "@/lib/config";
 import UserAvatar from "@/components/common/UserAvatar";
 import { emitAction } from "@/lib/notificationBus";
+import { useToast } from "@/components/ui/toast";
 
 interface GroupProfileSessionProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface GroupProfileSessionProps {
 }
 
 const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClose, groupId }) => {
+  const { show } = useToast();
   const [group, setGroup] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState(false);
@@ -130,6 +132,8 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
   };
 
   const removeMember = async (userId: string) => {
+    const member = group?.members?.find((m: any) => String(m._id || m.id) === String(userId));
+    const memberName = member?.name || 'User';
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${SOCKET_URL}/api/group/${groupId}/remove-member`, {
@@ -143,6 +147,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
           ...prev,
           members: prev.members.filter((m: any) => String(m._id || m.id) !== String(userId))
         }));
+        show(`${memberName} Removed Successfully`, "error");
       }
     } catch (err) {
       console.error(err);
@@ -151,6 +156,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
 
   const addMembers = async () => {
     if (selectedMembers.size === 0) return;
+    const addedNames = workspaceMembers.filter((m: any) => selectedMembers.has(m._id || m.id)).map((m: any) => m.name).join(', ');
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${SOCKET_URL}/api/group/${groupId}/add-members`, {
@@ -163,6 +169,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
         setGroup(data.group);
         setShowAddMember(false);
         setSelectedMembers(new Set());
+        show(`${addedNames} Added Successfully`, "success");
       }
     } catch (err) {
       console.error(err);

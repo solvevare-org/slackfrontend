@@ -268,8 +268,8 @@ socket.on("online users", (users: string[]) => {
       if (!isCurrentWorkspaceGroup) return;
       
       if (activeChat?.type === "group" && msg.group === activeChat.id) {
-        // Only add if not from me (avoid duplicate)
-        if (msg.from !== myId) {
+        // Add system messages or messages from others
+        if (msg.isSystemMessage || msg.from !== myId) {
           setMessages((prev) => [...prev, msg]);
         }
       } else if (msg.group && msg.from !== myId) {
@@ -334,6 +334,13 @@ socket.on("online users", (users: string[]) => {
         }
         return newSet;
       });
+    });
+
+    socket.on('group-name-updated', (data: any) => {
+      setChannels(prev => prev.map(c => c._id === data.groupId ? { ...c, name: data.name } : c));
+      if (activeChat?.type === 'group' && activeChat.id === data.groupId) {
+        setActiveChat(prev => prev ? { ...prev, name: data.name } : null);
+      }
     });
 
     socket.on('member-removed-notification', (data: any) => {
@@ -890,7 +897,7 @@ socket.on("online users", (users: string[]) => {
               {/* SCROLLABLE MESSAGES */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
                 {messages.map((m, idx) => {
-                  // System message rendering
+                  // System messages display centered with quotes
                   if (m.isSystemMessage) {
                     return (
                       <div key={m.id || `msg-${idx}`} className="flex justify-center my-4">

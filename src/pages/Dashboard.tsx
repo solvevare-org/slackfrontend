@@ -681,6 +681,11 @@ socket.on("online users", (users: string[]) => {
                   onClick={() => {
                     const ac = { type: "group" as const, id: c._id, name: c.name }
                     setActiveChat(ac)
+                    setRemovedFromGroups(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(c._id);
+                      return newSet;
+                    });
                     try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
                   }}
                   className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${

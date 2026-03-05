@@ -23,6 +23,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
   const [showAddMember, setShowAddMember] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<any[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem('user');
@@ -173,6 +174,25 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const deleteChannel = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${SOCKET_URL}/api/group/${groupId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        show('Channel Deleted Successfully', 'error');
+        setShowDeleteConfirm(false);
+        onClose();
+      }
+    } catch (err) {
+      console.error(err);
+      show('Failed to delete channel', 'error');
     }
   };
 
@@ -352,6 +372,19 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
                   })}
                 </div>
               </div>
+
+              {/* Delete Channel Button */}
+              {isAdmin() && (
+                <div className="mt-6">
+                  <button 
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
+                  >
+                    <X size={18} />
+                    Delete Channel
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div className="text-center text-gray-400 mt-12">
@@ -427,6 +460,41 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/70 z-[60]" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[450px] bg-[#1a1d21] rounded-xl shadow-2xl z-[70] border border-red-500/30">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-red-500/20 rounded-full">
+                  <X size={24} className="text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Delete Channel?</h3>
+                  <p className="text-sm text-gray-400 mt-1">Are you sure Delete This Channel</p>
+                </div>
+              </div>
+              <p className="text-gray-300 text-sm mb-6">This action cannot be undone. All messages will be permanently deleted.</p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={deleteChannel}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition"
+                >
+                  Delete
+                </button>
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </>

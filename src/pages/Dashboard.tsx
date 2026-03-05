@@ -196,7 +196,11 @@ const Dashboard = () => {
                     emitNotification({
                       type: notif.type,
                       from: notif.from?._id,
+                      fromName: notif.fromName || notif.from?.name,
+                      fromAvatar: notif.fromAvatar || notif.from?.avatar,
                       groupId: notif.groupId,
+                      groupName: notif.groupName,
+                      groupPicture: notif.groupPicture,
                       title: notif.title,
                       message: notif.message
                     });
@@ -249,6 +253,8 @@ socket.on("online users", (users: string[]) => {
           emitNotification({
             type: "private",
             from: msg.from,
+            fromName: msg.fromName,
+            fromAvatar: dmUsers.find(u => (u._id || u.id) === msg.from)?.avatar || null,
             title: msg.fromName ? `DM from ${msg.fromName}` : "New DM",
             message: msg.content,
             file: msg.file
@@ -279,9 +285,12 @@ socket.on("online users", (users: string[]) => {
           [groupId]: (prev[groupId] || 0) + 1,
         }));
         try {
+          const channel = channels.find(c => c._id === msg.group);
           emitNotification({
             type: "group",
             groupId: msg.group,
+            groupName: channel?.name || 'Group',
+            groupPicture: channel?.image?.url || null,
             title: msg.fromName ? `${msg.fromName} in group` : "Group message",
             message: msg.content,
             from: msg.from,
@@ -323,6 +332,8 @@ socket.on("online users", (users: string[]) => {
                     emitNotification({
                       type: 'group',
                       groupId: data.groupId,
+                      groupName: data.groupName,
+                      groupPicture: res.group.image?.url || null,
                       title: data.groupName,
                       message: data.message
                     });
@@ -357,6 +368,8 @@ socket.on("online users", (users: string[]) => {
             emitNotification({
               type: 'group',
               groupId: data.groupId,
+              groupName: data.groupName,
+              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url || null,
               title: data.groupName,
               message: data.message
             });
@@ -366,6 +379,42 @@ socket.on("online users", (users: string[]) => {
         }
         return newSet;
       });
+    });
+
+    socket.on('channel-deleted-notification', (data: any) => {
+      const notifKey = `channel-deleted-${data.groupId}-${data.message}`;
+      setShownNotifications(prev => {
+        if (prev.has(notifKey)) return prev;
+        const newSet = new Set(prev);
+        newSet.add(notifKey);
+        
+        const isCurrentWorkspaceGroup = channels.some(c => c._id === data.groupId);
+        
+        if (isCurrentWorkspaceGroup) {
+          try {
+            emitNotification({
+              type: 'group',
+              groupId: data.groupId,
+              groupName: data.groupName,
+              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url || null,
+              title: data.groupName,
+              message: data.message
+            });
+            setChannels(prevChannels => prevChannels.filter(c => c._id !== data.groupId));
+            if (activeChat?.id === data.groupId) {
+              setActiveChat(null);
+            }
+          } catch (e) {}
+        }
+        return newSet;
+      });
+    });
+
+    socket.on('channel-deleted', (data: any) => {
+      setChannels(prevChannels => prevChannels.filter(c => c._id !== data.groupId));
+      if (activeChat?.id === data.groupId) {
+        setActiveChat(null);
+      }
     });
 
     return () => { 

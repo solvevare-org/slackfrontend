@@ -15,6 +15,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import ProfileSession from "./ProfileSession";
+import GroupProfileSession from "./GroupProfileSession";
+import { SOCKET_URL } from "@/lib/config";
 
 /* 🔥 Icon Button */
 interface IconButtonProps {
@@ -54,6 +56,8 @@ const Sidebar: React.FC = () => {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
+  const [groupProfileOpen, setGroupProfileOpen] = useState(false);
+  const [viewingGroupId, setViewingGroupId] = useState<string | null>(null);
 
   /* 🔥 Load User */
   useEffect(() => {
@@ -71,7 +75,19 @@ const Sidebar: React.FC = () => {
   useEffect(() => {
     const off = onNotification((payload: NotificationPayload) => {
       const item: ActivityItem = { id: `${Date.now()}-${Math.random()}`, ts: Date.now(), ...payload };
-      setActivities((prev) => [item, ...prev]);
+      setActivities((prev) => {
+        // Check for duplicates
+        const isDuplicate = prev.some(existing => {
+          if (item.type === 'private' && existing.type === 'private') {
+            return existing.from === item.from && existing.message === item.message;
+          } else if (item.type === 'group' && existing.type === 'group') {
+            return existing.groupId === item.groupId && existing.message === item.message;
+          }
+          return false;
+        });
+        if (isDuplicate) return prev;
+        return [item, ...prev];
+      });
       setUnread((prev) => prev + 1);
     });
     return off;
@@ -121,14 +137,40 @@ const Sidebar: React.FC = () => {
   };
 
   const handleClickActivity = (it: ActivityItem) => {
+    // Show profile when clicking on notification avatar
+    // Don't navigate, just show profile modal
+  };
+
+  const handleAvatarClick = (e: React.MouseEvent, it: ActivityItem) => {
+    e.stopPropagation();
+    if (it.type === 'private' && it.from) {
+      // Fetch and show user profile
+      const token = localStorage.getItem('token');
+      fetch(`${SOCKET_URL}/api/user/${it.from}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          setViewingUser(data.user);
+          setProfileOpen(true);
+        })
+        .catch(() => {});
+    } else if (it.type === 'group' && it.groupId) {
+      // Show group profile
+      setViewingGroupId(it.groupId);
+      setGroupProfileOpen(true);
+    }
+  };
+
+  const handleNotificationClick = (it: ActivityItem) => {
     // open chat inside Dashboard by emitting an action that Dashboard listens to
     if (it.type === "private" && it.from) {
-      const ac = { type: 'dm', id: it.from, name: it.title || '' };
+      const ac = { type: 'dm', id: it.from, name: it.fromName || it.title || '' };
       try { localStorage.setItem('activeChat', JSON.stringify(ac)); } catch (e) {}
       emitAction({ action: 'open-chat', data: ac });
       navigate('/dashboard');
     } else if (it.type === "group" && it.groupId) {
-      const ac = { type: 'group', id: it.groupId, name: it.title || '' };
+      const ac = { type: 'group', id: it.groupId, name: it.groupName || it.title || '' };
       try { localStorage.setItem('activeChat', JSON.stringify(ac)); } catch (e) {}
       emitAction({ action: 'open-chat', data: ac });
       navigate('/dashboard');
@@ -242,12 +284,26 @@ const Sidebar: React.FC = () => {
                         {activities.map((it) => (
                           <div 
                             key={it.id} 
-                            onClick={() => handleClickActivity(it)} 
+                            onClick={() => handleNotificationClick(it)} 
                             className="group flex items-start gap-4 p-4 hover:bg-purple-600/15 cursor-pointer border border-transparent hover:border-purple-500/30 rounded-xl transition-all duration-200 hover:scale-[1.02] bg-[#0a0b0d]/30"
                           >
-                            <div className="relative flex-shrink-0">
-                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
-                                {it.type === 'private' ? <User size={20} /> : it.type === 'group' ? <Hash size={20} /> : <Bell size={20} />}
+                            <div className="relative flex-shrink-0" onClick={(e) => handleAvatarClick(e, it)}>
+                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg hover:scale-110 transition-transform overflow-hidden cursor-pointer">
+                                {it.type === 'private' ? (
+                                  it.fromAvatar ? (
+                                    <img src={it.fromAvatar} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <User size={20} />
+                                  )
+                                ) : it.type === 'group' ? (
+                                  it.groupPicture ? (
+                                    <img src={it.groupPicture} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Hash size={20} />
+                                  )
+                                ) : (
+                                  <Bell size={20} />
+                                )}
                               </div>
                               {it.file?.filename && (
                                 <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-pink-600 rounded-full flex items-center justify-center shadow-lg">
@@ -258,7 +314,7 @@ const Sidebar: React.FC = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors">
-                                  {it.title || (it.type === 'private' ? 'Direct message' : 'Channel message')}
+                                  {it.type === 'private' ? (it.fromName || it.title || 'Direct message') : (it.groupName || it.title || 'Channel message')}
                                 </div>
                                 <div className="text-[10px] text-gray-500 whitespace-nowrap">
                                   {(() => {
@@ -329,6 +385,7 @@ const Sidebar: React.FC = () => {
 
       {/* Profile Session */}
       <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser || user} isOwnProfile={!viewingUser} />
+      <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(null); }} groupId={viewingGroupId} />
     </div>
   );
 };

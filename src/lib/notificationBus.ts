@@ -3,10 +3,14 @@ type NotificationType = "private" | "group" | "community" | "file";
 export type NotificationPayload = {
   type: NotificationType;
   from?: string; // user id for private messages
+  fromName?: string; // user name
+  fromAvatar?: string; // user avatar url
   title?: string; // short title shown in list
   message?: string; // optional message preview
   file?: { filename?: string; url?: string; mimetype?: string; size?: number };
   groupId?: string; // for group/community notifications
+  groupName?: string; // group name
+  groupPicture?: string; // group picture url
   ts?: number; // optional timestamp
 };
 

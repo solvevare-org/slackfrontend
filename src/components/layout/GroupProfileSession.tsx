@@ -337,12 +337,13 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
                   )}
                 </h4>
                 <div className="space-y-2 bg-[#0f1115] p-4 rounded-lg max-h-[400px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
-                  {group.members?.filter((m: any) => !group.admins?.some((a: any) => String(a._id || a) === String(m._id || m.id))).map((member: any) => {
+                  {group.members?.filter((m: any) => !group.admins?.some((a: any) => String(a._id || a) === String(m._id || m.id))).map((member: any, idx: number) => {
                     const memberId = member._id || member.id;
+                    const key = memberId || `member-${idx}`;
                     const canRemove = isAdmin() && String(memberId) !== String(currentUser?._id || currentUser?.id);
                     return (
                       <div 
-                        key={memberId} 
+                        key={key} 
                         className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg transition relative cursor-pointer"
                         onMouseEnter={() => setHoveredMember(memberId)}
                         onMouseLeave={() => setHoveredMember(null)}

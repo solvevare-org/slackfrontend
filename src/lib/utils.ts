@@ -30,7 +30,7 @@ export function playNotificationSound() {
 // Remove any URLs from a text string and collapse whitespace.
 export function hideUrls(text?: string | null) {
   if (!text) return "";
-  // strip http/https urls
-  const stripped = text.replace(/https?:\/\/[\S]+/gi, "");
+  // strip http/http urls
+  const stripped = text.replace(/http?:\/\/[\S]+/gi, "");
   return stripped.replace(/\s+/g, " ").trim();
 } 

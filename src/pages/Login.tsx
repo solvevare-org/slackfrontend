@@ -42,19 +42,19 @@ const Login = () => {
   const slides = [
     {
       image:
-        "https://images.pexels.com/photos/3184306/pexels-photo-3184306.jpeg",
+        "http://images.pexels.com/photos/3184306/pexels-photo-3184306.jpeg",
       title: "Welcome to SolveVare",
       description: "Connect, chat and collaborate with your team.",
     },
     {
       image:
-        "https://images.pexels.com/photos/3184338/pexels-photo-3184338.jpeg",
+        "http://images.pexels.com/photos/3184338/pexels-photo-3184338.jpeg",
       title: "Secure Communication",
       description: "Real-time messaging with secure backend.",
     },
     {
       image:
-        "https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg",
+        "http://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg",
       title: "Organize Teams",
       description: "Create groups and manage your workspace easily.",
     },

@@ -31,8 +31,8 @@ export function playNotificationSound() {
 // Remove any URLs from a text string and collapse whitespace.
 export function hideUrls(text?: string | null) {
   if (!text) return "";
-  // strip http/http urls
-  const stripped = text.replace(/http?:\/\/[\S]+/gi, "");
+  // strip https/https urls
+  const stripped = text.replace(/https?:\/\/[\S]+/gi, "");
   return stripped.replace(/\s+/g, " ").trim();
 }
 
@@ -53,7 +53,7 @@ export function imgUrl(input?: string | null): string {
   if (!input) return '';
 
   // absolute URL already contains protocol
-  if (/^https?:\/\//i.test(input)) {
+  if (/^httpss?:\/\//i.test(input)) {
     return input;
   }
 

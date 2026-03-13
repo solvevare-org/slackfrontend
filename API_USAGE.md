@@ -4,8 +4,8 @@
 
 ### Environment Files Created:
 - `.env` - Default configuration
-- `.env.development` - Development environment (http://localhost:9000)
-- `.env.production` - Production environment (http://72.60.97.98:6004)
+- `.env.development` - Development environment (https://localhost:9000)
+- `.env.production` - Production environment (https://72.60.97.98:6004)
 
 ### Centralized API Configuration:
 - Location: `src/config/api.ts`
@@ -18,7 +18,7 @@
 ### Before (❌ Old Way):
 ```typescript
 const token = localStorage.getItem('token');
-const response = await fetch('http://localhost:9000/api/workspaces/123', {
+const response = await fetch('https://localhost:9000/api/workspaces/123', {
   headers: { Authorization: `Bearer ${token}` }
 });
 ```
@@ -70,7 +70,7 @@ await api.delete('/api/message/123');
 
 ### Before (❌):
 ```typescript
-const socket = io('http://localhost:9000', { auth: { token } });
+const socket = io('https://localhost:9000', { auth: { token } });
 ```
 
 ### After (✅):
@@ -92,8 +92,8 @@ Replace all instances of hardcoded URLs in:
 - `src/components/layout/Header.tsx`
 
 ### Find and Replace:
-1. `http://localhost:9000` → Use `api` instance or `BACKEND_URL`
-2. `http://72.60.97.98:6004` → Use `api` instance or `BACKEND_URL`
+1. `https://localhost:9000` → Use `api` instance or `BACKEND_URL`
+2. `https://72.60.97.98:6004` → Use `api` instance or `BACKEND_URL`
 3. `fetch(...)` → `api.get/post/put/delete(...)`
 
 ---
@@ -102,7 +102,7 @@ Replace all instances of hardcoded URLs in:
 
 1. Stop the dev server (Ctrl+C)
 2. Run: `npm run dev` or `vite`
-3. Access: `http://72.60.97.98:6007`
+3. Access: `https://72.60.97.98:6007`
 
 For production build:
 ```bash

@@ -159,12 +159,12 @@ const Admin = () => {
 
     if (platform === "facebook") {
       window.open(
-        `http://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`,
+        `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`,
         "_blank"
       );
     } else if (platform === "whatsapp") {
       window.open(
-        `http://wa.me/?text=${encodeURIComponent("You are invited: " + link)}`,
+        `https://wa.me/?text=${encodeURIComponent("You are invited: " + link)}`,
         "_blank"
       );
     } else {

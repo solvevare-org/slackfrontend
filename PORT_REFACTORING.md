@@ -9,19 +9,19 @@ All hardcoded port numbers have been removed from the frontend project. The port
 
 ### 1. `.env` (Main)
 ```env
-VITE_BACKEND_URL=http://72.60.97.98:6004
+VITE_BACKEND_URL=https://72.60.97.98:6004
 VITE_PORT=6007
 ```
 
 ### 2. `.env.development` (Development)
 ```env
-VITE_BACKEND_URL=http://localhost:9000
+VITE_BACKEND_URL=https://localhost:9000
 VITE_PORT=6007
 ```
 
 ### 3. `.env.production` (Production)
 ```env
-VITE_BACKEND_URL=http://72.60.97.98:6004
+VITE_BACKEND_URL=https://72.60.97.98:6004
 VITE_PORT=6007
 ```
 
@@ -32,7 +32,7 @@ VITE_PORT=6007
 ### `src/config/api.ts` - Centralized Configuration
 ```typescript
 // Backend URL from environment
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:9000';
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://localhost:9000';
 
 // Frontend port from environment
 export const FRONTEND_PORT = parseInt(import.meta.env.VITE_PORT || '6007');

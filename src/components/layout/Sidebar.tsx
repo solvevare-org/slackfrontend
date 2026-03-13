@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import ProfileSession from "./ProfileSession";
 import GroupProfileSession from "./GroupProfileSession";
-import { SOCKET_URL } from "@/lib/config";
+import { API_URL} from "@/lib/config";
 import { imgUrl } from "@/lib/utils";
 
 /* 🔥 Icon Button */
@@ -147,7 +147,7 @@ const Sidebar: React.FC = () => {
     if (it.type === 'private' && it.from) {
       // Fetch and show user profile
       const token = localStorage.getItem('token');
-      fetch(`${SOCKET_URL}/api/user/${it.from}`, {
+      fetch(`${API_URL}/api/user/${it.from}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(r => r.json())
@@ -162,7 +162,9 @@ const Sidebar: React.FC = () => {
       setGroupProfileOpen(true);
     }
   };
-
+// console.log("API_URL:", API_URL);
+// console.log("ENV:", import.meta.env);
+// console.log("API_URL:", API_URL);
   const handleNotificationClick = (it: ActivityItem) => {
     // open chat inside Dashboard by emitting an action that Dashboard listens to
     if (it.type === "private" && it.from) {

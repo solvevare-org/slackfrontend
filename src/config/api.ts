@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Backend server configuration - reads from VITE_BACKEND_URL in .env
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:6006';
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:6004';
 
 
 // Frontend server configuration
@@ -40,3 +40,4 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+console.log(BACKEND_URL);

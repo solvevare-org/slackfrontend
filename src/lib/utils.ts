@@ -40,7 +40,7 @@ export function hideUrls(text?: string | null) {
  * Normalize a URL returned from the backend so that it always points to the
  * configured API host.  The backend may send absolute URLs (including the
  * host), protocol‑relative URLs (`//host/...`), or just a path like
- * `/uploads/foo.png`.  In development the host is `localhost:6006`, but in a
+ * `${API_URL}/uploads/foo.png`.  In development the host is `localhost:6004`, but in a
  * production deployment the backend is usually accessed through a proxy, so
  * hardcoding the port would bypass that proxy.
  *

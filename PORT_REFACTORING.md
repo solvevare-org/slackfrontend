@@ -9,7 +9,7 @@ All hardcoded port numbers have been removed from the frontend project. The port
 
 ### 1. `.env` (Main)
 ```env
-VITE_BACKEND_URL=http://72.60.97.98:6006
+VITE_BACKEND_URL=http://72.60.97.98:6004
 VITE_PORT=6007
 ```
 
@@ -21,7 +21,7 @@ VITE_PORT=6007
 
 ### 3. `.env.production` (Production)
 ```env
-VITE_BACKEND_URL=http://72.60.97.98:6006
+VITE_BACKEND_URL=http://72.60.97.98:6004
 VITE_PORT=6007
 ```
 

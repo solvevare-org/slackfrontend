@@ -5,7 +5,7 @@
 ### Environment Files Created:
 - `.env` - Default configuration
 - `.env.development` - Development environment (http://localhost:9000)
-- `.env.production` - Production environment (http://72.60.97.98:6006)
+- `.env.production` - Production environment (http://72.60.97.98:6004)
 
 ### Centralized API Configuration:
 - Location: `src/config/api.ts`
@@ -93,7 +93,7 @@ Replace all instances of hardcoded URLs in:
 
 ### Find and Replace:
 1. `http://localhost:9000` → Use `api` instance or `BACKEND_URL`
-2. `http://72.60.97.98:6006` → Use `api` instance or `BACKEND_URL`
+2. `http://72.60.97.98:6004` → Use `api` instance or `BACKEND_URL`
 3. `fetch(...)` → `api.get/post/put/delete(...)`
 
 ---

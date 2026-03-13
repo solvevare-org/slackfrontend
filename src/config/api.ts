@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Backend server configuration - reads from VITE_BACKEND_URL in .env
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://localhost:6004';
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ;
 
 
 // Frontend server configuration

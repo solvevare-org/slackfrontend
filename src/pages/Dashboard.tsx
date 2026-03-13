@@ -19,6 +19,7 @@ interface IUser {
   name?: string;
   role?: string;
   Role?: string;
+  avatar?: string;
 }
 
 interface IMessage {
@@ -83,7 +84,7 @@ const Dashboard = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
   const [groupProfileOpen, setGroupProfileOpen] = useState(false);
-  const [viewingGroupId, setViewingGroupId] = useState<string | null>(null);
+  const [viewingGroupId, setViewingGroupId] = useState<string | undefined>(undefined);
   const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -308,7 +309,7 @@ socket.on("online users", (users: string[]) => {
             type: "private",
             from: msg.from,
             fromName: msg.fromName,
-            fromAvatar: dmUsers.find(u => (u._id || u.id) === msg.from)?.avatar || null,
+            fromAvatar: dmUsers.find(u => (u._id || u.id) === msg.from)?.avatar,
             title: msg.fromName ? `DM from ${msg.fromName}` : "New DM",
             message: msg.content,
             file: msg.file
@@ -344,7 +345,7 @@ socket.on("online users", (users: string[]) => {
             type: "group",
             groupId: msg.group,
             groupName: channel?.name || 'Group',
-            groupPicture: channel?.image?.url || null,
+            groupPicture: channel?.image?.url,
             title: msg.fromName ? `${msg.fromName} in group` : "Group message",
             message: msg.content,
             from: msg.from,
@@ -387,7 +388,7 @@ socket.on("online users", (users: string[]) => {
                       type: 'group',
                       groupId: data.groupId,
                       groupName: data.groupName,
-                      groupPicture: res.group.image?.url || null,
+                      groupPicture: res.group.image?.url,
                       title: data.groupName,
                       message: data.message
                     });
@@ -423,7 +424,7 @@ socket.on("online users", (users: string[]) => {
               type: 'group',
               groupId: data.groupId,
               groupName: data.groupName,
-              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url || null,
+              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url,
               title: data.groupName,
               message: data.message
             });
@@ -450,7 +451,7 @@ socket.on("online users", (users: string[]) => {
               type: 'group',
               groupId: data.groupId,
               groupName: data.groupName,
-              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url || null,
+              groupPicture: channels.find(c => c._id === data.groupId)?.image?.url,
               title: data.groupName,
               message: data.message
             });
@@ -528,7 +529,7 @@ socket.on("online users", (users: string[]) => {
         }
       } else if (payload?.action === 'open-profile' && payload?.data?.user) {
         setGroupProfileOpen(false);
-        setViewingGroupId(null);
+        setViewingGroupId(undefined);
         setViewingUser(payload.data.user);
         setProfileOpen(true);
       }
@@ -1241,7 +1242,7 @@ socket.on("online users", (users: string[]) => {
                         {/* attachments */}
                         {m.file && ((m.file.mimetype && m.file.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file.filename || m.file.url || ''))) ? (
                           <img src={imgUrl(m.file.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file.url), '_blank')} />
-                        ) : m.file && /\.pdf$/i.test(m.file?.filename || '') ? (
+                        ) : m.file && /\.pdf$/i.test(m.file.filename || '') ? (
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -1257,16 +1258,16 @@ socket.on("online users", (users: string[]) => {
                                 <div className="text-sm text-green-400 mt-4 font-medium">Downloading...</div>
                               </div>
                             ) : (
-                              <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => window.open(imgUrl(m.file.url), '_blank')}>
+                              <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => m.file && window.open(imgUrl(m.file.url), '_blank')}>
                                 <svg xmlns="https://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                                 <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file.filename || 'File'}</div>
                                 <div className="flex gap-2 mt-4">
-                                  <button onClick={(e) => { e.stopPropagation(); window.open(imgUrl(m.file.url), '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium">
+                                  <button onClick={(e) => { e.stopPropagation(); m.file && window.open(imgUrl(m.file.url), '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium">
                                     <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                     Preview
                                   </button>
-                                  <button onClick={(e) => { e.stopPropagation(); downloadFile(imgUrl(m.file.url), m.file.filename || 'file.pdf', m.id || ''); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
+                                  <button onClick={(e) => { e.stopPropagation(); m.file && downloadFile(imgUrl(m.file.url), m.file.filename || 'file.pdf', m.id || ''); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
                                     <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     Download
                                   </button>
@@ -1274,7 +1275,7 @@ socket.on("online users", (users: string[]) => {
                               </div>
                             )}
                           </div>
-                        ) : m.file && /\.(xlsx?|docx?|txt|mp4|avi|mov|mkv|rar|zip)$/i.test(m.file?.filename || '') ? (
+                        ) : m.file && /\.(xlsx?|docx?|txt|mp4|avi|mov|mkv|rar|zip)$/i.test(m.file.filename || '') ? (
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -1318,7 +1319,7 @@ socket.on("online users", (users: string[]) => {
                                   </>
                                 )}
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file.filename || 'File'}</div>
-                                <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
+                                <button onClick={(e) => { e.stopPropagation(); m.file && downloadFile(m.file.url, m.file.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium">
                                   <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                   Download
                                 </button>
@@ -1495,7 +1496,7 @@ socket.on("online users", (users: string[]) => {
         </main>
       </div>
       <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser} isOwnProfile={false} />
-      <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(null); }} groupId={viewingGroupId} />
+      <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(undefined); }} groupId={viewingGroupId} />
     </AppLayout>
   );
 };

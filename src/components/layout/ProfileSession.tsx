@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Instagram, Facebook, Linkedin, MessageCircle, Upload } from "lucide-react";
 import { API_URL } from "@/lib/config";
+import { imgUrl } from "@/lib/utils";
 
 interface ProfileSessionProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           <button onClick={() => setFullscreenImage(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
             <X size={24} />
           </button>
-          <img src={user.avatar} alt="Profile" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={imgUrl(user.avatar)} alt="Profile" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 
@@ -124,7 +125,7 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           {/* Profile Picture */}
           <div className="flex justify-center mb-8 relative">
             {user?.avatar ? (
-              <img src={user.avatar} alt="Profile" className="w-28 h-28 rounded-full object-cover border-4 border-purple-600 cursor-pointer hover:opacity-80 transition" onClick={() => setFullscreenImage(true)} />
+              <img src={imgUrl(user.avatar)} alt="Profile" className="w-28 h-28 rounded-full object-cover border-4 border-purple-600 cursor-pointer hover:opacity-80 transition" onClick={() => setFullscreenImage(true)} />
             ) : (
               <div className="w-28 h-28 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center text-white text-4xl font-bold border-4 border-purple-500">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}

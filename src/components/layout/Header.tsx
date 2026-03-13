@@ -1,11 +1,9 @@
-import { LogOut, Search, ChevronDown, Plus, Sparkles, Building2, X } from 'lucide-react';
+import { Search, X, Plus, Building2, Sparkles, Hash, User, ChevronDown, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL, SOCKET_URL } from '@/lib/config';
-
-
-
-
+import { API_URL } from '@/lib/config';
+import { imgUrl } from '@/lib/utils';
+import ProfileSession from '@/components/layout/ProfileSession';
 
 interface IWorkspace {
   _id: string;
@@ -18,422 +16,272 @@ interface IWorkspace {
 const Header: React.FC = () => {
   const navigate = useNavigate();
 
-  // Logout function
   const handleLogout = () => {
     try {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       localStorage.removeItem('currentWorkspace');
-    } catch (e) {}
+    } catch (e) { }
     navigate('/login');
   };
 
   const [currentWorkspace, setCurrentWorkspace] = React.useState<IWorkspace | null>(null);
-  const [workspaces, setWorkspaces] = React.useState<IWorkspace[]>([]);
-  const [open, setOpen] = React.useState(false);
-  const [channelsOpen, setChannelsOpen] = React.useState(false);
-  const [channels, setChannels] = React.useState<any[]>([]);
-
-  const [showCreateChannel, setShowCreateChannel] = React.useState(false);
-  const [showInviteUser, setShowInviteUser] = React.useState(false);
   const [showPlusMenu, setShowPlusMenu] = React.useState(false);
-  const [channelName, setChannelName] = React.useState('');
-  const [inviteEmail, setInviteEmail] = React.useState('');
-  const [inviteRole, setInviteRole] = React.useState('User');
-  const [actionMsg, setActionMsg] = React.useState('');
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = React.useState(false);
+  const [profileOpen, setProfileOpen] = React.useState(false);
   const [user, setUser] = React.useState<any>(null);
   const [fullscreenImage, setFullscreenImage] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchResults, setSearchResults] = React.useState<any[]>([]);
+  const [showSearchResults, setShowSearchResults] = React.useState(false);
   const isAdmin = (user?.role || user?.Role || '').toString().toLowerCase() === 'admin';
 
-  // Load current workspace from localStorage
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem('currentWorkspace');
       if (raw) setCurrentWorkspace(JSON.parse(raw));
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
-  // Load current user from localStorage
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem('user');
       if (raw) setUser(JSON.parse(raw));
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
-  // Fetch workspaces with polling fallback
   React.useEffect(() => {
-    let socket: any = null;
-    let polling: any = null;
-    const token = localStorage.getItem('token');
-
-    const fetchWorkspaces = async () => {
-      if (!token) return;
-      try {
-        const res = await fetch(`${API_URL}/api/workspaces`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.status === 401) {
-          console.warn('Header: workspaces fetch unauthorized');
-          navigate('/login');
-          return;
-        }
-
-        if (!res.ok) {
-          const txt = await res.text();
-          console.error('Header: workspaces fetch failed', res.status, txt);
-          return;
-        }
-
-        const data = await res.json();
-        const wsList = data.workspaces || [];
-        setWorkspaces(wsList);
-        // Auto-select if only one workspace and no current workspace
-        if (wsList.length === 1 && !currentWorkspace) {
-          const ws = wsList[0];
-          try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); } catch(e){}
-          setCurrentWorkspace(ws);
-        }
-      } catch (e) {
-        console.error('Header: fetchWorkspaces error', e);
-      }
-    };
-
-    (async () => {
-      fetchWorkspaces();
-
-      try {
-        const mod = await import('socket.io-client');
-        const { io } = mod;
-        socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket'] });
-        socket.on('workspace-updated', fetchWorkspaces);
-        socket.on('workspace-group-created', fetchWorkspaces);
-      } catch (e) {
-        polling = setInterval(fetchWorkspaces, 10000);
-      }
-    })();
-
-    return () => {
-      try {
-        if (socket) socket.disconnect();
-      } catch (e) {}
-      if (polling) clearInterval(polling);
-    };
-  }, [navigate]);
-
-  // Create channel
-  const createChannel = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) { navigate('/login'); return; }
-    if (!channelName.trim()) { setActionMsg('Channel name required'); return; }
-
-    setActionMsg('Creating...');
-    try {
-      const rawUser = localStorage.getItem('user');
-      const me = rawUser ? JSON.parse(rawUser).id : null;
-      const rawWs = localStorage.getItem('currentWorkspace');
-      const ws = rawWs ? JSON.parse(rawWs) : null;
-      const body = { name: channelName.trim(), members: JSON.stringify(me ? [me] : []), workspaceId: ws?.id || ws?._id };
-      const res = await fetch(`${API_URL}/api/group`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-      if (!res.ok) setActionMsg(data?.msg || 'Create channel failed');
-      else { setActionMsg('Channel created'); setShowCreateChannel(false); setChannelName(''); }
-      // refresh channels for current workspace
-      fetchWorkspaceChannels();
-    } catch (e) {
-      console.error('createChannel error', e);
-      setActionMsg('Server error');
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
     }
-  };
 
-  // Fetch channels for the selected workspace
-  const fetchWorkspaceChannels = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    try {
-      const rawWs = localStorage.getItem('currentWorkspace');
-      const ws = rawWs ? JSON.parse(rawWs) : null;
-      if (!ws?.id && !ws?._id) return setChannels([]);
-      const id = ws.id || ws._id;
-      const res = await fetch(`${API_URL}/api/workspaces/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return setChannels([]);
-      const data = await res.json();
-      setChannels(data.workspace?.channels || []);
-    } catch (e) {
-      console.error('fetchWorkspaceChannels error', e);
+
+    const timer = setTimeout(async () => {
+      try {
+        const rawWs = localStorage.getItem('currentWorkspace');
+        const ws = rawWs ? JSON.parse(rawWs) : null;
+        if (!ws?.id && !ws?._id) return;
+        const wsId = ws.id || ws._id;
+
+        const res = await fetch(`${API_URL}/api/workspaces/${wsId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const members = data.workspace?.members || [];
+        const channels = data.workspace?.channels || [];
+
+        const query = searchQuery.toLowerCase();
+        const filteredUsers = members.filter((m: any) =>
+          m.name?.toLowerCase().includes(query) || m.email?.toLowerCase().includes(query)
+        );
+        const filteredChannels = channels.filter((c: any) =>
+          c.name?.toLowerCase().includes(query)
+        );
+
+        setSearchResults([...filteredChannels.map((c: any) => ({ ...c, type: 'channel' })), ...filteredUsers.map((u: any) => ({ ...u, type: 'user' }))]);
+        setShowSearchResults(true);
+      } catch (e) {
+        console.error('Search error', e);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSearchResultClick = (result: any) => {
+    if (result.type === 'channel') {
+      const ac = { type: 'group', id: result._id, name: result.name };
+      try { localStorage.setItem('activeChat', JSON.stringify(ac)); } catch (e) { }
+      // Use emitAction to trigger Dashboard to open the chat
+      const { emitAction } = require('@/lib/notificationBus');
+      emitAction({ action: 'open-chat', data: ac });
+      // Navigate to dashboard if not already there
+      if (!window.location.pathname.includes('/dashboard')) {
+        navigate('/dashboard');
+      }
+    } else if (result.type === 'user') {
+      const ac = { type: 'dm', id: result._id || result.id, name: result.name };
+      try { localStorage.setItem('activeChat', JSON.stringify(ac)); } catch (e) { }
+      navigate(`/dm/${result._id || result.id}`);
     }
-  };
-
-  // Invite user
-  const sendInvite = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) { navigate('/login'); return; }
-    if (!inviteEmail.trim()) { setActionMsg('Email required'); return; }
-
-    setActionMsg('Sending invite...');
-    try {
-      const rawWs = localStorage.getItem('currentWorkspace')
-      const ws = rawWs ? JSON.parse(rawWs) : null
-      const workspaceId = ws?.id || ws?._id || null
-      const res = await fetch(`${API_URL}/api/auth/invite`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole, workspaceId })
-      })
-      const data = await res.json();
-      if (!res.ok) setActionMsg(data?.msg || 'Invite failed');
-      else { setActionMsg('Invite sent'); setShowInviteUser(false); setInviteEmail(''); }
-    } catch (e) {
-      console.error('invite error', e);
-      setActionMsg('Server error');
-    }
-  };
-
-  const openWorkspace = (ws: IWorkspace) => {
-    const namePart = encodeURIComponent(ws.name);
-    try { 
-      localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })); 
-      localStorage.removeItem('activeChat'); // Clear active chat when switching workspace
-    } catch(e){}
-    setCurrentWorkspace(ws);
-    // Force page reload to refresh workspace data
-    window.location.href = `/dashboard/${namePart}/${ws._id}`;
+    setSearchQuery('');
+    setShowSearchResults(false);
   };
 
   return (
     <>
-      {/* Fullscreen Image Viewer */}
       {fullscreenImage && (
         <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center" onClick={() => setFullscreenImage(null)}>
-          <button onClick={() => setFullscreenImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
-            <X size={24} />
+          <button onClick={() => setFullscreenImage(null)} className="absolute top-2 right-2 p-1 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
+            <X size={20} />
           </button>
-          <img src={fullscreenImage} alt="Workspace" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={imgUrl(fullscreenImage)} alt="Workspace" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
-      
-      <div className="text-white py-4 px-6 flex items-center justify-between">
 
-        {/* LEFT LOGO + WORKSPACE */}
-        <div className="flex items-center gap-4 w-1/4">
-          {/* <div className="text-lg font-semibold">WORK SPACE</div> */}
-          <div className="relative flex items-center gap-2">
-            {workspaces.length === 1 ? (
-              <div className="text-sm text-white bg-purple-600/20 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 shadow-lg">
-                {currentWorkspace?.image ? (
-                  <img 
-                    src={`${API_URL}${currentWorkspace.image}`} 
-                    alt={currentWorkspace.name} 
-                    className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
-                    }}
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                    {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
-                  </div>
-                )}
-                <span className="font-semibold">{currentWorkspace?.name || 'Workspace'}</span>
-              </div>
-            ) : (
-              <button
-                onClick={() => setOpen(!open)}
-                className="text-sm text-white bg-purple-600/20 hover:bg-purple-600/30 px-4 py-2 rounded-lg flex items-center gap-2 border border-purple-500/30 transition-all shadow-lg"
-              >
-                {currentWorkspace?.image ? (
-                  <img 
-                    src={`${API_URL}${currentWorkspace.image}`} 
-                    alt={currentWorkspace.name} 
-                    className="w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFullscreenImage(`${API_URL}${currentWorkspace.image}`);
-                    }}
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                    {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
-                  </div>
-                )}
-                <span className="font-semibold">{currentWorkspace ? currentWorkspace.name : 'Select workspace'}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-       
+      <div className="text-white py-3 px-3 flex items-center justify-between">
 
-            {open && (
-              <>
-                <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-                <div className="absolute left-0 top-full mt-2 w-72 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
-                  <div className="p-3 border-b border-purple-500/20 bg-purple-600/10">
-                    <div className="text-xs font-semibold text-purple-300">YOUR WORKSPACES</div>
-                  </div>
-                  <div className="max-h-80 overflow-auto" style={{ scrollbarWidth: 'thin' }}>
-                    {workspaces.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-gray-500">No workspaces available</div>
-                    ) : (
-                      workspaces.map(ws => (
-                        <button
-                          key={ws._id}
-                          onClick={() => { openWorkspace(ws); setOpen(false); }}
-                          className={`w-full text-left px-4 py-3 hover:bg-purple-600/10 flex items-center gap-3 transition-colors border-b border-purple-500/10 ${
-                            currentWorkspace?._id === ws._id ? 'bg-purple-600/20' : ''
-                          }`}>
-                          {ws.image ? (
-                            <img 
-                              src={`${API_URL}${ws.image}`} 
-                              alt={ws.name} 
-                              className="w-10 h-10 rounded-lg object-cover shadow-lg cursor-pointer hover:opacity-80 transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFullscreenImage(`${API_URL}${ws.image}`);
-                              }}
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold shadow-lg">
-                              {ws.name?.charAt(0)?.toUpperCase()}
-                            </div>
-                          )}
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-white">{ws.name}</div>
-                            <div className="text-xs text-gray-400">{ws.type || 'Workspace'}</div>
-                          </div>
-                          {currentWorkspace?._id === ws._id && (
-                            <div className="w-2 h-2 bg-green-500 rounded-full" />
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* CENTER SEARCH */}
-        <div className="w-1/2 flex justify-center">
-          <div className="relative w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-purple-400" />
-            <input
-              placeholder="Search SolveVare"
-              className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-[#0a0b0d]/50 border border-purple-500/20 placeholder:text-gray-500 text-sm text-white outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
-            />
-          </div>
-        </div>
-
-     
-
-        {/* RIGHT LOGOUT */}
-        <div className="w-1/4 flex justify-end items-center gap-2">
-
-
-
-         {isAdmin && currentWorkspace && (
-        <div className="relative">
+        <div className="flex items-center gap-4 relative">
           <button
-            onClick={() => setShowPlusMenu((s) => !s)}
-            title="Create / Invite"
-            className="flex items-center gap-2 px-4 py-2 hover:bg-purple-600/20 rounded-xl bg-purple-600/10 border border-purple-500/30 transition-all shadow-lg"
+            onClick={() => setShowWorkspaceMenu((s) => !s)}
+            className="flex items-center gap-3 px-4 py-2 hover:bg-purple-600/20 rounded-xl transition"
           >
-            <Plus className="w-5 h-5 text-purple-400" />
+            {/* {currentWorkspace?.image ? (
+              <img
+                src={imgUrl(currentWorkspace.image)}
+                alt={currentWorkspace.name}
+                className="w-10 h-10 rounded-lg object-cover"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenImage(imgUrl(currentWorkspace.image));
+                }}
+              />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold">
+                {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
+              </div>
+            )} */}
+            <span className="font-semibold text-white">{currentWorkspace?.name || 'Workspace'}</span>
+            <ChevronDown size={16} className="text-white" />
           </button>
 
-          {showPlusMenu && (
+          {showWorkspaceMenu && (
             <>
-              <div className="fixed inset-0 z-20" onClick={() => setShowPlusMenu(false)} />
-              <div className="absolute right-0 mt-2 w-48 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
+              <div className="fixed inset-0 z-20" onClick={() => setShowWorkspaceMenu(false)} />
+              <div className="absolute top-full left-0 w-52 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
                 <button
-                  onClick={() => { setShowPlusMenu(false); navigate('/create-channel'); }}
-                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors border-b border-purple-500/10 flex items-center gap-2"
+                  onClick={() => {
+                    setProfileOpen(true);
+                    setShowWorkspaceMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
                 >
-                  <Building2 className="w-4 h-4 text-purple-400" />
-                  Create Channel
+                  Profile
                 </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      onClick={() => {
+                        navigate('/admin');
+                        setShowWorkspaceMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
+                    >
+                      Invite Member
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigate('/create-channel');
+                        setShowWorkspaceMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
+                    >
+                      Create Channel
+                    </button>
+                  </>
+                )}
                 <button
-                  onClick={() => { setShowPlusMenu(false); navigate('/admin'); }}
-                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    handleLogout();
+                    setShowWorkspaceMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-3 hover:bg-red-600/10 text-red-400 transition-colors"
                 >
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  Invite Member
+                  Sign Out
                 </button>
               </div>
             </>
           )}
         </div>
-      )}
         
-          {/* invite moved into split control on the left for admins */}
-          <button onClick={handleLogout} title="Logout" className="p-2.5 rounded-xl hover:bg-red-500/10 transition-all border border-transparent hover:border-red-500/30">
-            <LogOut className="h-5 w-5 text-red-400" />
+        <div className="flex-1 max-w-2xl mx-8 relative">
+          <div className="relative">
+            
+            
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-purple-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search users and channels..."
+              className="w-full pl-4 pr-12 py-3 rounded-xl bg-[#0a0b0d]/50 border border-purple-500/30 placeholder:text-gray-500 text-sm text-white text-center outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
+            />
+            
+          </div>
+
+          {showSearchResults && searchResults.length > 0 && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowSearchResults(false)} />
+              <div className="absolute top-full mt-2 w-full bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 max-h-96 overflow-auto">
+                {searchResults.map((result, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSearchResultClick(result)}
+                    className="w-full text-left px-4 py-3 hover:bg-purple-600/10 flex items-center gap-3 transition-colors border-b border-purple-500/10"
+                  >
+                    {result.type === 'channel' ? (
+                      result.image?.url ? (
+                        <img src={result.image.url} alt={result.name} className="w-10 h-10 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                          <Hash size={20} className="text-purple-400" />
+                        </div>
+                      )
+                    ) : (
+                      result.avatar ? (
+                        <img src={result.avatar} alt={result.name} className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center text-white font-bold">
+                          {result.name?.charAt(0)?.toUpperCase() || <User size={20} />}
+                        </div>
+                      )
+                    )}
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-white">{result.name}</div>
+                      <div className="text-xs text-gray-400">{result.type === 'channel' ? 'Channel' : result.email || 'User'}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.history.back()}
+            className="p-2 hover:bg-purple-600/20 rounded-lg transition-all hover:scale-110"
+            title="Back"
+          >
+            <ArrowLeft size={20} className="text-purple-400" />
+          </button>
+          <button
+            onClick={() => window.history.forward()}
+            className="p-2 hover:bg-purple-600/20 rounded-lg transition-all hover:scale-110"
+            title="Forward"
+          >
+            <ArrowRight size={20} className="text-purple-400" />
+          </button>
+           <button
+            onClick={() => window.location.reload()}
+            className="p-2 hover:bg-purple-600/20 rounded-lg transition-all hover:scale-110"
+            title="Reload"
+          >
+            <RotateCw size={20} className="text-purple-400" />
           </button>
 
         </div>
 
       </div>
 
-      {/* Create Channel Modal */}
-      {showCreateChannel && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-          <div className="bg-[#111214] p-6 rounded border border-gray-800 w-96">
-            <h3 className="text-lg font-medium mb-3">Create Channel</h3>
-            <input
-              value={channelName}
-              onChange={(e) => setChannelName(e.target.value)}
-              placeholder="Channel name"
-              className="w-full text-white p-2 rounded bg-black/10 text-white mb-3"
-            />
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-gray-400">Want to add users or invite members?</div>
-              <button onClick={() => { navigate('/admin'); }} className="text-sm text-blue-400 underline">Invite Members</button>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { setShowCreateChannel(false); setChannelName(''); setActionMsg(''); }} className="px-3 py-1 rounded border">Cancel</button>
-              <button onClick={createChannel} className="px-3 text-white py-1 rounded bg-purple-600">Create</button>
-            </div>
-            {actionMsg && <div className="mt-3 text-sm text-white text-gray-300">{actionMsg}</div>}
-          </div>
-        </div>
-      )}
+      {/* profile session popup */}
+      <ProfileSession isOpen={profileOpen} onClose={() => setProfileOpen(false)} user={user} isOwnProfile={true} />
 
-      {/* Invite User Modal */}
-      {showInviteUser && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-          <div className="bg-[#111214] p-6 rounded border border-gray-800 w-96">
-            <h3 className="text-lg text-white font-medium mb-3">Invite User to Workspace</h3>
-            <input
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="User email"
-              className="w-full p-2 rounded text-white bg-black/10 mb-2"
-            />
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole((e.target as HTMLSelectElement).value)}
-              className="w-full p-2 rounded bg-black/10 text-white mb-3"
-            >
-              <option>User</option>
-              <option>Developer</option>
-              <option>Sales</option>
-              <option>Admin</option>
-            </select>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { setShowInviteUser(false); setInviteEmail(''); setActionMsg(''); }} className="px-3 py-1 rounded border">Cancel</button>
-              <button onClick={sendInvite} className="px-3 py-1 rounded bg-green-600">Send Invite</button>
-            </div>
-            {actionMsg && <div className="mt-3 text-sm text-gray-300">{actionMsg}</div>}
-          </div>
-        </div>
-      )}
     </>
   );
 };

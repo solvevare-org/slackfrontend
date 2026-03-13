@@ -1,4 +1,5 @@
 import React from "react";
+import { imgUrl } from "@/lib/utils";
 
 interface UserAvatarProps {
   user: any;
@@ -26,7 +27,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size = "md", className = 
 
   return avatar ? (
     <img 
-      src={avatar} 
+      src={imgUrl(avatar)} 
       alt={name} 
       className={`${sizeClasses[size]} rounded-full object-cover ${className}`} 
     />

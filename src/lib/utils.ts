@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { API_URL } from "./config";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -33,4 +34,44 @@ export function hideUrls(text?: string | null) {
   // strip http/http urls
   const stripped = text.replace(/http?:\/\/[\S]+/gi, "");
   return stripped.replace(/\s+/g, " ").trim();
-} 
+}
+
+/**
+ * Normalize a URL returned from the backend so that it always points to the
+ * configured API host.  The backend may send absolute URLs (including the
+ * host), protocol‑relative URLs (`//host/...`), or just a path like
+ * `/uploads/foo.png`.  In development the host is `localhost:6006`, but in a
+ * production deployment the backend is usually accessed through a proxy, so
+ * hardcoding the port would bypass that proxy.
+ *
+ * Usage:
+ * ```tsx
+ * <img src={imgUrl(user.avatar)} />
+ * ```
+ */
+export function imgUrl(input?: string | null): string {
+  if (!input) return '';
+
+  // absolute URL already contains protocol
+  if (/^https?:\/\//i.test(input)) {
+    return input;
+  }
+
+  // protocol‑relative (starts with `//`).  Prepend the current page's
+  // protocol so the browser resolves it correctly.
+  if (/^\/\//.test(input)) {
+    try {
+      return `${window.location.protocol}${input}`;
+    } catch {
+      // fallback if window is not available (shouldn't happen in client)
+      return `${API_URL}${input.replace(/^\/\//, '/')}`;
+    }
+  }
+
+  // anything else is treated as a path relative to the API host
+  if (input.startsWith('/')) {
+    return `${API_URL}${input}`;
+  }
+  return `${API_URL}/${input}`;
+}
+

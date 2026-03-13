@@ -23,6 +23,8 @@ const RichTextEditor = ({ content, onChange, onSubmit, placeholder, disabled, ri
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+        link: false,
+        underline: false,
       }),
       Underline,
       Link.configure({

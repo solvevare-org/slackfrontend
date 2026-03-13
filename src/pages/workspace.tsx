@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Users, Building2, ArrowRight, X, Sparkles, Trash2, Image as ImageIcon, Briefcase, Clock, Shield } from "lucide-react";
 import { API_URL } from "@/lib/config";
+import { imgUrl } from "@/lib/utils";
 
 const Workspace = () => {
   const navigate = useNavigate();
@@ -156,7 +157,7 @@ const Workspace = () => {
           <button onClick={() => setFullscreenImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all hover:rotate-90 duration-300 text-white z-[101]">
             <X size={24} />
           </button>
-          <img src={fullscreenImage} alt="Workspace" className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
+          <img src={imgUrl(fullscreenImage)} alt="Workspace" className="max-w-[95vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
       
@@ -164,7 +165,7 @@ const Workspace = () => {
         <div className="fixed top-24 right-8 z-50 animate-slideIn">
           <div className="bg-gradient-to-r from-purple-600 via-purple-500 to-pink-500 text-white px-6 py-4 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -378,12 +379,12 @@ const Workspace = () => {
                             <div className="relative">
                               <div className="absolute inset-0 bg-purple-500 blur-lg opacity-30 rounded-xl"></div>
                               <img 
-                                src={`${API_URL}${ws.image}`} 
+                                src={imgUrl(ws.image)} 
                                 alt={ws.name} 
                                 className="relative w-14 h-14 rounded-xl object-cover border-2 border-purple-500/30 group-hover:border-purple-500/60 transition-all shadow-lg"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setFullscreenImage(`${API_URL}${ws.image}`);
+                                  setFullscreenImage(imgUrl(ws.image));
                                 }}
                               />
                             </div>

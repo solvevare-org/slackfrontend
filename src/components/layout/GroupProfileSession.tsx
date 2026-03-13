@@ -4,6 +4,7 @@ import { SOCKET_URL } from "@/lib/config";
 import UserAvatar from "@/components/common/UserAvatar";
 import { emitAction } from "@/lib/notificationBus";
 import { useToast } from "@/components/ui/toast";
+import { imgUrl } from "@/lib/utils";
 
 interface GroupProfileSessionProps {
   isOpen: boolean;
@@ -210,7 +211,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
           <button onClick={() => setFullscreenImage(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
             <X size={24} />
           </button>
-          <img src={group.image.url} alt="Group" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={imgUrl(group.image.url)} alt="Group" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 
@@ -238,7 +239,7 @@ const GroupProfileSession: React.FC<GroupProfileSessionProps> = ({ isOpen, onClo
               <div className="flex justify-center mb-8 relative group">
                 {group.image?.url ? (
                   <img 
-                    src={group.image.url} 
+                    src={imgUrl(group.image.url)} 
                     alt="Group" 
                     className="w-28 h-28 rounded-full object-cover border-4 border-purple-600 cursor-pointer hover:opacity-80 transition" 
                     onClick={() => setFullscreenImage(true)} 

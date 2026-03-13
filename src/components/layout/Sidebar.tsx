@@ -17,6 +17,7 @@ import {
 import ProfileSession from "./ProfileSession";
 import GroupProfileSession from "./GroupProfileSession";
 import { SOCKET_URL } from "@/lib/config";
+import { imgUrl } from "@/lib/utils";
 
 /* 🔥 Icon Button */
 interface IconButtonProps {
@@ -71,7 +72,7 @@ const Sidebar: React.FC = () => {
   const roleStr = (user?.role || user?.Role || "").toLowerCase();
   const isAdmin = roleStr === "admin";
 
-  /* 🔔 Notification Listener */
+  /* � Notification Listener */
   useEffect(() => {
     const off = onNotification((payload: NotificationPayload) => {
       const item: ActivityItem = { id: `${Date.now()}-${Math.random()}`, ts: Date.now(), ...payload };
@@ -183,7 +184,7 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="h-screen overflow-hidden ">
       {/* LEFT SIDEBAR */}
       <div className="w-[75px] h-full bg-gradient-to-b from-[#4A154B] via-[#5B1A5C] to-[#4A154B] flex flex-col items-center py-4 text-white shadow-2xl border-r border-purple-500/20">
 
@@ -212,7 +213,7 @@ const Sidebar: React.FC = () => {
             onClick={() => navigate("/dm/id")}
           />
 
-          {/* ✅ ADMIN ONLY BUTTON */}
+          {/* ✅ ADMIN ONLY BUTTON
           {isAdmin && (
             <IconButton
               icon={<Plus size={22} />}
@@ -220,7 +221,7 @@ const Sidebar: React.FC = () => {
               active={location.pathname.includes('/workspace')}
               onClick={() => navigate("/workspace")}
             />
-          )}
+          )} */}
 
           {/* Activity */}
           <div className="relative w-full">
@@ -291,13 +292,13 @@ const Sidebar: React.FC = () => {
                               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg hover:scale-110 transition-transform overflow-hidden cursor-pointer">
                                 {it.type === 'private' ? (
                                   it.fromAvatar ? (
-                                    <img src={it.fromAvatar} alt="" className="w-full h-full object-cover" />
+                                    <img src={imgUrl(it.fromAvatar)} alt="" className="w-full h-full object-cover" />
                                   ) : (
                                     <User size={20} />
                                   )
                                 ) : it.type === 'group' ? (
                                   it.groupPicture ? (
-                                    <img src={it.groupPicture} alt="" className="w-full h-full object-cover" />
+                                    <img src={imgUrl(it.groupPicture)} alt="" className="w-full h-full object-cover" />
                                   ) : (
                                     <Hash size={20} />
                                   )
@@ -369,7 +370,7 @@ const Sidebar: React.FC = () => {
         <div className="w-full pt-4 border-t border-purple-500/30">
           <div className="text-center cursor-pointer px-2" onClick={() => { setViewingUser(null); setProfileOpen(true); }}>
             {user?.avatar ? (
-              <img src={user.avatar} alt="Profile" className="w-14 h-14 rounded-full object-cover hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg" />
+              <img src={imgUrl(user.avatar)} alt="Profile" className="w-14 h-14 rounded-full object-cover hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg" />
             ) : (
               <div className="w-14 h-14 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg">
                 <span className="text-white font-bold text-xl">

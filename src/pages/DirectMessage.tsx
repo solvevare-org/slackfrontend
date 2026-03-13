@@ -5,7 +5,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import { ChevronDown, Send, Plus } from "lucide-react";
 import { emitNotification, clearNotifications } from "@/lib/notificationBus";
 import { useToast } from "@/components/ui/toast";
-import { hideUrls } from '@/lib/utils'
+import { hideUrls, imgUrl } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
 import RichTextEditor from "@/components/common/RichTextEditor";
@@ -47,6 +47,7 @@ const DirectMessage = () => {
 
   const [user, setUser] = useState<IUser | null>(null);
   const [dmUsers, setDmUsers] = useState<IUser[]>([]);
+  const [dmPreviews, setDmPreviews] = useState<Record<string, IMessage>>({});
   const [activeDM, setActiveDM] = useState<IUser | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
   const [text, setText] = useState("");
@@ -70,6 +71,18 @@ const DirectMessage = () => {
   const { show } = useToast();
 
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+
+  // helper to format preview dates
+  const formatDate = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
@@ -132,6 +145,40 @@ const DirectMessage = () => {
     } catch (e) {}
   }, [params.userId])
 
+  // when dm user list changes, load last message preview for each
+  useEffect(() => {
+    if (dmUsers.length === 0) return;
+    const token = localStorage.getItem('token');
+    const rawWs = localStorage.getItem('currentWorkspace');
+    const currentWs = rawWs ? JSON.parse(rawWs) : null;
+    const wsParam = currentWs?.id ? `?workspaceId=${currentWs.id}` : '';
+
+    dmUsers.forEach((u) => {
+      if (!(u._id || u.id)) return;
+      // construct URL with limit and workspace param
+      let url = `${SOCKET_URL}/api/message/${u._id || u.id}`;
+      const params: string[] = [];
+      if (wsParam) params.push(wsParam.replace('?', ''));
+      params.push('limit=1');
+      if (params.length) url += `?${params.join('&')}`;
+
+      fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          const msgs: IMessage[] = Array.isArray(d?.messages) ? d.messages : [];
+          if (msgs.length) {
+            const last = msgs[msgs.length - 1];
+            setDmPreviews((prev) => ({ ...prev, [u._id || u.id!]: last }));
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    });
+  }, [dmUsers]);
+
   /* ================= SOCKET ================= */
   useEffect(() => {
     if (!myId) return;
@@ -170,16 +217,20 @@ const DirectMessage = () => {
       // ignore messages that belong to a different workspace
       if (msg.workspace && currentWs?.id && String(msg.workspace) !== String(currentWs.id)) return;
 
-      if (activeDM && (msg.from === activeDM._id || (msg.to && String(msg.to) === String(activeDM._id)))) {
+      if (activeDM && msg.from === activeDM._id) {
         // Only add message if it's from the other person, not from me
         if (msg.from !== myId) {
           setMessages((prev) => [...prev, msg]);
         }
+        // update preview for this active conversation as well
+        setDmPreviews(prev => ({ ...prev, [msg.from]: msg }));
       } else if (msg.from !== myId) {
         setUnreadCounts((prev) => ({
           ...prev,
           [msg.from]: (prev[msg.from] || 0) + 1,
         }));
+        // keep preview for sender
+        setDmPreviews(prev => ({ ...prev, [msg.from]: msg }));
 
         try {
           emitNotification({
@@ -238,9 +289,14 @@ const DirectMessage = () => {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then((d) =>
-        setMessages(Array.isArray(d?.messages) ? d.messages : [])
-      );
+      .then((d) => {
+        const msgs: IMessage[] = Array.isArray(d?.messages) ? d.messages : [];
+        setMessages(msgs);
+        if (msgs.length) {
+          const last = msgs[msgs.length - 1];
+          setDmPreviews(prev => ({ ...prev, [activeDM._id!]: last }));
+        }
+      });
 
     // reset unread
     setUnreadCounts((prev) => ({
@@ -293,25 +349,30 @@ const DirectMessage = () => {
       const rawWs = localStorage.getItem('currentWorkspace');
       const currentWs = rawWs ? JSON.parse(rawWs) : null;
 
+      const outgoing = {
+        from: myId,
+        fromName: user?.name,
+        content: editorHtml,
+        workspace: currentWs?.id || null,
+        createdAt: new Date().toISOString(),
+      };
+
       socketRef.current.emit("private message", {
         to: activeDM._id,
         content: editorHtml,
         workspaceId: currentWs?.id || null
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          from: myId,
-          fromName: user?.name,
-          content: editorHtml,
-          workspace: currentWs?.id || null,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      setMessages((prev) => [...prev, outgoing]);
+      // update preview for this conversation
+      if (activeDM?._id) {
+        setDmPreviews(prev => ({ ...prev, [activeDM._id!]: outgoing }));
+      }
 
       setEditorHtml("");
       setText("");
+      setContextMenu(null);
+      setSelectionMode(false);
     }
   }; 
 
@@ -430,59 +491,73 @@ const DirectMessage = () => {
       <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
 
         {/* SIDEBAR */}
-        <aside className="w-[280px] bg-[#1A1D21]/80 backdrop-blur-sm border-r border-purple-500/20 shadow-2xl flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
- 
-         <div className="flex items-center gap-2 mb-3 px-3">
-            <div className="p-1 bg-green-500/20 rounded">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              
+        <aside className="w-[280px] bg-gradient-to-b from-[#1A1D21]/95 to-[#141619]/95 backdrop-blur-xl border-r border-purple-500/30 shadow-2xl flex flex-col overflow-hidden scrollbar-hide">
+          <div className="p-4 border-b border-purple-500/20 sticky top-0 z-20 bg-[#1A1D21]/95">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 bg-purple-500/20 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <h3 className="text-sm font-bold text-white">Direct Messages</h3>
             </div>
-           
-            <span className="text-xs font-semibold text-gray-400">Direct Messages</span>
-               <hr className="my-4 border-purple-500/30" />
-            <span className="ml-auto text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{dmUsers.length}</span>
           </div>
-
-          <div className="space-y-1">
-            {dmUsers.map((u) => {
-              const isOnline = onlineUsers.includes(u._id || u.id || '');
-              const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
-              return (
-                <div
-                  key={u._id}
-                  onClick={() => { setActiveDM(u); try { localStorage.setItem('activeDM', JSON.stringify(u)) } catch (e) {} }}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
-                    activeDM?._id === u._id
-                      ? 'bg-purple-600/20 border border-purple-500/30'
-                      : 'hover:bg-white/5'
-                  }`}
-                >
-                  <div className="relative" onClick={async (e) => { 
-                    e.stopPropagation(); 
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                    const data = await res.json();
-                    setViewingUser(data.user || u); 
-                    setProfileOpen(true); 
-                  }}>
-                    <UserAvatar user={u} size="sm" />
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
-                        isOnline ? "bg-green-500" : "bg-gray-500"
-                      }`}
-                    />
+          
+          <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
+            <div className="space-y-2">
+              {dmUsers.map((u) => {
+                const isOnline = onlineUsers.includes(u._id || u.id || '');
+                const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
+                const preview = dmPreviews[u._id || u.id || ''];
+                return (
+                  <div
+                    key={u._id}
+                    onClick={() => { setActiveDM(u); try { localStorage.setItem('activeDM', JSON.stringify(u)) } catch (e) {} }}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
+                      activeDM?._id === u._id
+                        ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 border border-purple-500/40 shadow-lg shadow-purple-900/20'
+                        : 'hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20'
+                    }`}
+                  >
+                    <div className="relative" onClick={async (e) => { 
+                      e.stopPropagation(); 
+                      const token = localStorage.getItem('token');
+                      const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
+                      const data = await res.json();
+                      setViewingUser(data.user || u); 
+                      setProfileOpen(true); 
+                    }}>
+                      <UserAvatar user={u} size="sm" />
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
+                          isOnline ? "bg-green-500 shadow-lg shadow-green-500/50" : "bg-gray-500"
+                        }`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-200 group-hover:text-white transition truncate">{u.name}</span>
+                        {preview && (
+                          <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                            {formatDate(preview.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                      {preview && (
+                        <p className="text-xs text-gray-400 truncate">
+                          {preview.from === myId
+                            ? `You: ${hideUrls((preview.content || '').replace(/<[^>]+>/g, ''))}`
+                            : hideUrls((preview.content || '').replace(/<[^>]+>/g, ''))}
+                        </p>
+                      )}
+                    </div>
+                    {hasUnread && (
+                      <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
+                        {unreadCounts[u._id || u.id || '']}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-sm font-medium text-gray-200">{u.name}</span>
-                  {hasUnread && (
-                    <span className="ml-auto bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">
-                      {unreadCounts[u._id || u.id || '']}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
           </div>
         </aside>
 
@@ -544,17 +619,17 @@ const DirectMessage = () => {
               </div>
 
               {/* SCROLLABLE MESSAGES */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
+              <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 scrollbar-hide min-h-0">
                 {messages.map((m, idx) => {
                   const isImage = m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || '')));
                   const isMine = m.from === myId;
                   const msgUser = isMine ? user : dmUsers.find(u => (u._id || u.id) === m.from);
                   return (
-                  <div key={m.id || `msg-${idx}`} className={`group flex ${isMine ? 'justify-end' : 'justify-start'} animate-fadeIn items-start gap-2`} onMouseEnter={() => m.id && setSelectionMode(true)}>
-                  {!isMine && msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
+                  <div key={m.id || `msg-${idx}`} className={`group flex justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`} onMouseEnter={() => m.id && setSelectionMode(true)}>
+                  {msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
                   <div className="flex items-center gap-2">
                   {isMine && (
-                    <div className={selectedMessages.has(m.id || '') ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} style={{transition: 'opacity 0.2s'}}>
+                    <div className={contextMenu?.id === m.id ? 'opacity-100' : 'opacity-0'} style={{transition: 'opacity 0.2s'}}>
                       <input type="checkbox" checked={selectedMessages.has(m.id || '')} onChange={() => m.id && toggleMessageSelection(m.id)} className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer" />
                     </div>
                   )}
@@ -571,16 +646,11 @@ const DirectMessage = () => {
                         toggleMessageSelection(m.id);
                       }
                     }}
-                    className={`relative transition-all duration-200 hover:scale-[1.02] cursor-pointer ${
-                      isImage ? 'rounded-[1.5rem]' : 'p-4 rounded-[1.25rem]'
-                    } ${
-                      !isImage && isMine ? 'bg-gradient-to-br from-purple-600 to-purple-700 shadow-lg shadow-purple-900/50' : ''
-                    } ${
-                      !isImage && !isMine ? 'bg-gradient-to-br from-[#2b2f36] to-[#1f2329] shadow-lg' : ''
+                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 rounded-lg w-full ${
+                      isImage ? 'rounded-[1.5rem]' : ''
                     } ${
                       selectedMessages.has(m.id || '') ? 'ring-4 ring-purple-500 ring-offset-2 ring-offset-[#0f1115]' : ''
-                    }`}
-                    style={{ maxWidth: '19rem' }}
+                    } hover:bg-white/5`}
                   >
 
                     {editingId === m.id ? (
@@ -640,7 +710,7 @@ const DirectMessage = () => {
                       <>
                         {/* attachments: inline image */}
                         {m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || ''))) ? (
-                          <img src={m.file!.url} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(m.file!.url, '_blank')} />
+                          <img src={imgUrl(m.file!.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
                         ) : m.file && /\.pdf$/i.test(m.file?.filename || '') ? (
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
@@ -652,13 +722,13 @@ const DirectMessage = () => {
                                 <div className="text-sm text-green-400 mt-4 font-medium">Downloading...</div>
                               </div>
                             ) : (
-                              <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => window.open(m.file!.url, '_blank')}>
+                              <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => window.open(imgUrl(m.file!.url), '_blank')}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                                 <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file!.filename || 'File'}</div>
                                 <div className="flex gap-2 mt-4">
-                                  <button onClick={(e) => { e.stopPropagation(); window.open(m.file!.url, '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
-                                  <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file.pdf', m.id || ''); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
+                                  <button onClick={(e) => { e.stopPropagation(); window.open(imgUrl(m.file!.url), '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
+                                  <button onClick={(e) => { e.stopPropagation(); downloadFile(imgUrl(m.file!.url), m.file!.filename || 'file.pdf', m.id || ''); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
                                 </div>
                               </div>
                             )}
@@ -709,8 +779,14 @@ const DirectMessage = () => {
                         ) : (
                           m.content && (
                             <>
-                              <div className="prose prose-invert prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
-                              {m.edited && <div className="text-xs text-gray-400 italic mt-1">(edited)</div>}
+                              <div className="flex flex-col">
+                                <div className="flex items-baseline gap-2 mb-1">
+                                  <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                                  <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                </div>
+                                <div className="text-white text-sm" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
+                                {m.edited && <div className="text-xs text-gray-400 italic mt-1">(edited)</div>}
+                              </div>
                             </>
                           )
                         )}
@@ -718,7 +794,6 @@ const DirectMessage = () => {
                     )} 
                   </div>
                   </div>
-                  {isMine && msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
                   </div>
                   );
                 })}

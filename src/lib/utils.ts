@@ -53,7 +53,7 @@ export function imgUrl(input?: string | null): string {
   if (!input) return '';
 
   // absolute URL already contains protocol
-  if (/^httpss?:\/\//i.test(input)) {
+  if (/^https?:\/\//i.test(input)) {
     return input;
   }
 

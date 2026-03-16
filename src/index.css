@@ -221,4 +221,18 @@ body {
 .ProseMirror::-webkit-scrollbar-thumb:hover {
   background: rgba(147, 51, 234, 0.5);
 }
+
+/* Forwarded message styling */
+.forwarded-msg {
+  border-left: 3px solid rgba(147, 51, 234, 0.6);
+  padding-left: 10px;
+  margin: 2px 0;
+}
+
+.forwarded-label {
+  font-size: 0.75rem;
+  color: #a78bfa;
+  display: block;
+  margin-bottom: 4px;
+}
 }

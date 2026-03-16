@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { hideUrls, imgUrl } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
+import ForwardSession from "@/components/layout/ForwardSession";
 import RichTextEditor from "@/components/common/RichTextEditor";
 import { API_URL, SOCKET_URL } from "@/lib/config";
 
@@ -32,6 +33,7 @@ interface IMessage {
     filename?: string;
     mimetype?: string;
     size?: number;
+    thumbnail?: string;
   };
 }
 
@@ -58,7 +60,6 @@ const DirectMessage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
   const [directMessagesExpanded, setDirectMessagesExpanded] = useState(true);
 
   // context menu / edit state
@@ -86,6 +87,10 @@ const DirectMessage = () => {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwardContent, setForwardContent] = useState("");
+  const [forwardSenderName, setForwardSenderName] = useState("");
+  const [forwardFile, setForwardFile] = useState<{ url: string; filename?: string; mimetype?: string; size?: number } | null>(null);
 
   const myId = useMemo(() => user?._id || user?.id || "", [user]);
 
@@ -372,7 +377,6 @@ const DirectMessage = () => {
       setEditorHtml("");
       setText("");
       setContextMenu(null);
-      setSelectionMode(false);
     }
   }; 
 
@@ -441,7 +445,6 @@ const DirectMessage = () => {
       const totalDeleted = myMessages.length + otherMessages.length;
       show(`${totalDeleted} message(s) removed from chat`, 'success');
       setSelectedMessages(new Set());
-      setSelectionMode(false);
     } catch (e) {
       show('Delete failed', 'error');
     }
@@ -612,7 +615,7 @@ const DirectMessage = () => {
                       </button>
                       <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
                       <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">Delete</button>
-                      <button onClick={() => { setSelectedMessages(new Set()); setSelectionMode(false); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">Cancel</button>
+                      <button onClick={() => { setSelectedMessages(new Set()); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">Cancel</button>
                     </div>
                   )}
                 </div>
@@ -625,33 +628,39 @@ const DirectMessage = () => {
                   const isMine = m.from === myId;
                   const msgUser = isMine ? user : dmUsers.find(u => (u._id || u.id) === m.from);
                   return (
-                  <div key={m.id || `msg-${idx}`} className={`group flex justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`} onMouseEnter={() => m.id && setSelectionMode(true)}>
+                  <div key={m.id || `msg-${idx}`} className={`group flex justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`}>
                   {msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
                   <div className="flex items-center gap-2">
-                  {isMine && (
-                    <div className={contextMenu?.id === m.id ? 'opacity-100' : 'opacity-0'} style={{transition: 'opacity 0.2s'}}>
-                      <input type="checkbox" checked={selectedMessages.has(m.id || '')} onChange={() => m.id && toggleMessageSelection(m.id)} className="w-5 h-5 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer" />
-                    </div>
-                  )}
                   <div
                     onContextMenu={(e) => { 
                       e.preventDefault(); 
                       if (!m.id) return;
-                      // Only allow edit/delete for own messages
-                      if (String(m.from) !== String(myId)) return;
                       setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); 
                     }}
-                    onClick={(e) => {
-                      if (selectedMessages.size > 0 && m.id) {
-                        toggleMessageSelection(m.id);
-                      }
+                    onClick={() => {
+                      if (!m.id) return;
+                      if (selectedMessages.size === 0) return;
+                      setSelectedMessages(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(m.id)) {
+                          newSet.delete(m.id);
+                        } else {
+                          newSet.add(m.id);
+                        }
+                        return newSet;
+                      });
                     }}
-                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 rounded-lg w-full ${
+                    onDoubleClick={() => {
+                      if (!m.id) return;
+                      setSelectedMessages(new Set([m.id]));
+                    }}
+                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 pr-12 rounded-lg w-full ${
                       isImage ? 'rounded-[1.5rem]' : ''
                     } ${
                       selectedMessages.has(m.id || '') ? 'ring-4 ring-purple-500 ring-offset-2 ring-offset-[#0f1115]' : ''
                     } hover:bg-white/5`}
                   >
+
 
                     {editingId === m.id ? (
                       <div className="flex flex-col gap-2 w-full">
@@ -710,8 +719,19 @@ const DirectMessage = () => {
                       <>
                         {/* attachments: inline image */}
                         {m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || ''))) ? (
-                          <img src={imgUrl(m.file!.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            </div>
+                            <img src={imgUrl(m.file!.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
+                          </div>
                         ) : m.file && /\.pdf$/i.test(m.file?.filename || '') ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -723,8 +743,12 @@ const DirectMessage = () => {
                               </div>
                             ) : (
                               <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => window.open(imgUrl(m.file!.url), '_blank')}>
-                                <svg xmlns="https://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                                <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>
+                                {m.file?.thumbnail ? (
+                                  <img src={imgUrl(m.file.thumbnail)} alt="PDF preview" className="w-full h-[160px] object-cover rounded-lg mb-3" />
+                                ) : (
+                                  <svg xmlns="https://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                )}
+                                {!m.file?.thumbnail && <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>}
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file!.filename || 'File'}</div>
                                 <div className="flex gap-2 mt-4">
                                   <button onClick={(e) => { e.stopPropagation(); window.open(imgUrl(m.file!.url), '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"><svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>
@@ -733,7 +757,13 @@ const DirectMessage = () => {
                               </div>
                             )}
                           </div>
+                          </div>
                         ) : m.file && /\.(xlsx?|docx?|txt|mp4|avi|mov|mkv|rar|zip)$/i.test(m.file?.filename || '') ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -775,6 +805,7 @@ const DirectMessage = () => {
                                 <button onClick={(e) => { e.stopPropagation(); downloadFile(m.file!.url, m.file!.filename || 'file', m.id || ''); }} className="flex items-center justify-center gap-2 mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"><svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
                               </div>
                             )}
+                          </div>
                           </div>
                         ) : (
                           m.content && (
@@ -843,18 +874,37 @@ const DirectMessage = () => {
                         </div>
                       ) : (
                         <>
-                          <button className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => {
-                            const id = contextMenu.id; const m = messages.find(x => x.id === id); if (!m) return setContextMenu(null);
-                            const plainText = (m.content || '').replace(/<[^>]*>/g, '');
-                            setEditingId(id); setEditingText(plainText); setContextMenu(null);
-                          }}>
-                            <svg xmlns="https://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit
-                          </button>
-                          <button className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-all hover:scale-105" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
-                            <svg xmlns="https://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                            Delete
-                          </button>
+                          {(() => { const found = messages.find(x => x.id === contextMenu.id); const isOwn = found && String(found.from) === String(myId); return (
+                            <>
+                              {isOwn && (
+                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg" onClick={() => {
+                                  const id = contextMenu.id; const m = messages.find(x => x.id === id); if (!m) return setContextMenu(null);
+                                  const plainText = (m.content || '').replace(/<[^>]*>/g, '');
+                                  setEditingId(id); setEditingText(plainText); setContextMenu(null);
+                                }}>
+                                  <div className="p-1.5 bg-white/20 rounded-lg"><svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
+                                  <span>Edit Message</span>
+                                </button>
+                              )}
+                              <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg" onClick={() => {
+                                const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
+                                setForwardContent(found.content || '');
+                                setForwardSenderName(found.fromName || 'Unknown');
+                                setForwardFile(found.file || null);
+                                setContextMenu(null);
+                                setForwardOpen(true);
+                              }}>
+                                <div className="p-1.5 bg-white/20 rounded-lg"><svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg></div>
+                                <span>Forward</span>
+                              </button>
+                              {isOwn && (
+                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                                  <div className="p-1.5 bg-white/20 rounded-lg"><svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></div>
+                                  <span>Delete Message</span>
+                                </button>
+                              )}
+                            </>
+                          ); })()}
                         </>
                       )}
                     </div>
@@ -907,6 +957,7 @@ const DirectMessage = () => {
         </main>
       </div>
       <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser} isOwnProfile={false} />
+      <ForwardSession isOpen={forwardOpen} onClose={() => { setForwardOpen(false); setForwardFile(null); }} messageContent={forwardContent} originalSenderName={forwardSenderName} file={forwardFile} />
     </AppLayout>
   );
 };

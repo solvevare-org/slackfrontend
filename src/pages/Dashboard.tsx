@@ -9,8 +9,9 @@ import { hideUrls, imgUrl } from '@/lib/utils'
 import UserAvatar from "@/components/common/UserAvatar";
 import ProfileSession from "@/components/layout/ProfileSession";
 import GroupProfileSession from "@/components/layout/GroupProfileSession";
+import ForwardSession from "@/components/layout/ForwardSession";
 import RichTextEditor from "@/components/common/RichTextEditor";
-import { SOCKET_URL } from "@/lib/config";
+import { SOCKET_URL, API_URL } from "@/lib/config";
 
 
 interface IUser {
@@ -37,6 +38,7 @@ interface IMessage {
     filename?: string;
     mimetype?: string;
     size?: number;
+    thumbnail?: string;
   };
 }
 
@@ -87,11 +89,14 @@ const Dashboard = () => {
   const [viewingGroupId, setViewingGroupId] = useState<string | undefined>(undefined);
   const [downloadingFiles, setDownloadingFiles] = useState<Record<string, AbortController>>({});
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [removedFromGroups, setRemovedFromGroups] = useState<Set<string>>(new Set());
   const [shownNotifications, setShownNotifications] = useState<Set<string>>(new Set());
   const [workspaceDeleted, setWorkspaceDeleted] = useState(false);
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwardContent, setForwardContent] = useState("");
+  const [forwardSenderName, setForwardSenderName] = useState("");
+  const [forwardFile, setForwardFile] = useState<{ url: string; filename?: string; mimetype?: string; size?: number } | null>(null);
 
   // load last-message preview for each DM when users list changes
   useEffect(() => {
@@ -172,18 +177,21 @@ const Dashboard = () => {
 
     const parsed = JSON.parse(storedUser);
     setUser(parsed);
+    // DEBUG: verify avatar URL being loaded
+    console.log('Loaded user:', { id: parsed._id || parsed.id, avatar: parsed.avatar });
 
     const currentWs = rawWorkspace ? JSON.parse(rawWorkspace) : null;
-    if (!currentWs?.id) return;
 
-    fetch(`${SOCKET_URL}/api/workspaces/${currentWs.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((d) => {
+    const loadWorkspace = async (workspaceId: string) => {
+      try {
+        const res = await fetch(`${API_URL}/api/workspaces/${workspaceId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json();
+
         if (!d?.success) {
           setWorkspaceDeleted(true);
-          setDeletedWorkspaceName(currentWs.name || 'Workspace');
+          setDeletedWorkspaceName(currentWs?.name || 'Workspace');
           return;
         }
 
@@ -197,11 +205,49 @@ const Dashboard = () => {
         );
 
         setChannels(workspace.channels || []);
-      })
-      .catch(() => {
+      } catch (err) {
         setWorkspaceDeleted(true);
-        setDeletedWorkspaceName(currentWs.name || 'Workspace');
-      });
+        setDeletedWorkspaceName(currentWs?.name || 'Workspace');
+      }
+    };
+
+    // If there is no workspace selected, try to auto-select when only one workspace exists
+    if (!currentWs?.id) {
+      (async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/workspaces`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          const workspaces = data.workspaces || [];
+
+          if (workspaces.length === 1) {
+            const ws = workspaces[0];
+            try {
+              localStorage.setItem(
+                'currentWorkspace',
+                JSON.stringify({
+                  id: ws._id,
+                  name: ws.name,
+                  image: ws.image,
+                  members: ws.members || [],
+                })
+              );
+            } catch (e) {}
+            await loadWorkspace(ws._id);
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        navigate("/workspace");
+      })();
+
+      return;
+    }
+
+    loadWorkspace(currentWs.id);
   }, [navigate]);
 
   /* ================= SOCKET ================= */
@@ -573,13 +619,24 @@ socket.on("online users", (users: string[]) => {
       const controller = new AbortController();
       setUploadAbortController(controller);
       setUploadingFiles(true);
-      
+      let uploadError: string | null = null;
+
       try {
         for (const f of files) {
           if (controller.signal.aborted) break;
-          await uploadFile(f, controller.signal);
+          try {
+            await uploadFile(f, controller.signal);
+          } catch (e: any) {
+            uploadError = e?.message || 'Upload failed';
+            break;
+          }
         }
-        show('Files sent successfully', 'success');
+
+        if (uploadError) {
+          show(uploadError, 'error');
+        } else if (!controller.signal.aborted) {
+          show('Files sent successfully', 'success');
+        }
       } catch (err: any) {
         if (err.name === 'AbortError') {
           show('Upload cancelled', 'info');
@@ -587,7 +644,7 @@ socket.on("online users", (users: string[]) => {
           show('Upload failed', 'error');
         }
       }
-      
+
       setUploadingFiles(false);
       setUploadAbortController(null);
       setFiles([]);
@@ -622,7 +679,6 @@ socket.on("online users", (users: string[]) => {
       setEditorHtml("");
       setText("");
       setContextMenu(null);
-      setSelectionMode(false);
     }
   };
 
@@ -668,7 +724,6 @@ socket.on("online users", (users: string[]) => {
       const totalDeleted = myMessages.length + otherMessages.length;
       show(`${totalDeleted} message(s) removed from chat`, 'success');
       setSelectedMessages(new Set());
-      setSelectionMode(false);
     } catch (e) {
       show('Delete failed', 'error');
     }
@@ -676,20 +731,18 @@ socket.on("online users", (users: string[]) => {
 
   /* ================= FILE UPLOAD ================= */
   const uploadFile = async (f: File, signal?: AbortSignal) => {
-    if (!activeChat) return;
+    if (!activeChat) throw new Error('No chat selected');
     
     // Block file upload if removed from group
     if (activeChat.type === 'group' && removedFromGroups.has(activeChat.id)) {
-      show('You cannot send files. Admin removed you from this group.', 'error');
-      return;
+      throw new Error('You cannot send files. Admin removed you from this group.');
     }
 
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) throw new Error('Unauthorized');
 
     if (f.size > 100 * 1024 * 1024) {
-      show("Max file size 100MB", "error");
-      return;
+      throw new Error('Max file size 100MB');
     }
 
     const fd = new FormData();
@@ -708,12 +761,24 @@ socket.on("online users", (users: string[]) => {
       method: "POST",
       body: fd,
       headers: { Authorization: `Bearer ${token}` },
-      signal
+      signal,
     });
 
-    const data = await res.json();
-    const msg = data?.message;
+    const contentType = res.headers.get('content-type') || '';
+    let data: any;
 
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      data = { msg: await res.text() };
+    }
+
+    if (!res.ok) {
+      const msg = data?.msg || data?.message || 'Upload failed';
+      throw new Error(msg);
+    }
+
+    const msg = data?.message;
     if (msg) {
       setMessages((prev) => [...prev, msg]);
     }
@@ -1055,7 +1120,7 @@ socket.on("online users", (users: string[]) => {
                           readOnly
                           className="w-4 h-4 rounded border-2 border-purple-500 bg-purple-900/30 checked:bg-purple-600 cursor-pointer"
                         />
-                        <span className="text-sm text-white font-medium">Select All</span>
+                        <span className="text-sm text-white font-medium">Delete from Me</span>
                       </button>
                       <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
                       <button 
@@ -1070,7 +1135,7 @@ socket.on("online users", (users: string[]) => {
                       <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">
                         Delete
                       </button>
-                      <button onClick={() => { setSelectedMessages(new Set()); setSelectionMode(false); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">
+                      <button onClick={() => { setSelectedMessages(new Set()); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">
                         Cancel
                       </button>
                     </div>
@@ -1094,46 +1159,75 @@ socket.on("online users", (users: string[]) => {
 
                   const isImage = m.file && ((m.file.mimetype && m.file.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file.filename || m.file.url || '')));
                   const isMine = m.from === myId;
+                  const isSelected = m.id ? selectedMessages.has(m.id) : false;
                   const msgUser = isMine ? user : dmUsers.find(u => (u._id || u.id) === m.from);
                   return (
                   <div
                     key={m.id || `msg-${idx}`}
-                    className={`group flex justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`}
-                    onMouseEnter={() => m.id && setSelectionMode(true)}
+                    className={`group flex w-full justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`}
                   >
                   {msgUser && (
                     <UserAvatar user={msgUser} size="sm" className="mt-1" />
                   )}
-                  <div className="flex items-center gap-2">
-                  {isMine && (
-                    <div className={contextMenu?.id === m.id ? 'opacity-100' : 'opacity-0'} style={{transition: 'opacity 0.2s'}}>
-                      <input
-                        type="checkbox"
-                        checked={selectedMessages.has(m.id || '')}
-                        onChange={() => m.id && toggleMessageSelection(m.id)}
-                        className="w-5 h-5 rounded border-2 border-purple-500 bg-purple-900/30 checked:bg-purple-600 cursor-pointer"
-                      />
-                    </div>
-                  )}
+                  <div className="flex flex-1 items-center gap-2">
                   <div
                     onContextMenu={(e) => { 
                       e.preventDefault(); 
                       if (!m.id) return;
-                      // Only allow edit/delete for own messages
-                      if (String(m.from) !== String(myId)) return;
                       setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); 
                     }}
-                    onClick={(e) => {
-                      if (selectedMessages.size > 0 && m.id) {
-                        toggleMessageSelection(m.id);
-                      }
+                    onClick={() => {
+                      if (!m.id) return;
+                      if (selectedMessages.size === 0) return;
+                      setSelectedMessages(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(m.id)) {
+                          newSet.delete(m.id);
+                        } else {
+                          newSet.add(m.id);
+                        }
+                        return newSet;
+                      });
                     }}
-                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 rounded-lg w-full ${
+                    onDoubleClick={() => {
+                      if (!m.id) return;
+                      setSelectedMessages(new Set([m.id]));
+                    }}
+                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 pr-12 rounded-lg w-full max-w-full flex-1 ${
                       isImage ? 'rounded-[1.5rem]' : ''
                     } ${
                       selectedMessages.has(m.id || '') ? 'ring-4 ring-purple-500 ring-offset-2 ring-offset-[#0f1115]' : ''
                     } hover:bg-white/5`}
                   >
+                    {isMine && (selectedMessages.has(m.id || '') || contextMenu?.id === m.id) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!m.id) return;
+                          setSelectedMessages(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(m.id)) {
+                              newSet.delete(m.id);
+                            } else {
+                              newSet.clear();
+                              newSet.add(m.id);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        className="absolute top-2 right-2 w-9 h-9 flex items-center justify-center rounded-full bg-purple-600 shadow-lg hover:bg-purple-700 transition z-20"
+                        title="Toggle selection"
+                      >
+                        {selectedMessages.has(m.id || '') ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        ) : (
+                          <span className="block w-4 h-4 rounded-full border border-white/50" />
+                        )}
+                      </button>
+                    )}
+
 
                     {editingId === m.id ? (
                       <div className="flex flex-col gap-2 w-full">
@@ -1241,8 +1335,36 @@ socket.on("online users", (users: string[]) => {
                       <>
                         {/* attachments */}
                         {m.file && ((m.file.mimetype && m.file.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file.filename || m.file.url || ''))) ? (
-                          <img src={imgUrl(m.file.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file.url), '_blank')} />
+                          <div className="flex flex-col gap-1">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          </div>
+                          <div className="relative inline-block group">
+                            <img
+                              src={imgUrl(m.file.url)}
+                              alt="image"
+                              className="w-[360px] h-[290px] object-cover cursor-pointer rounded-2xl transition-all duration-200 transform group-hover:scale-[1.02]"
+                              onClick={() => window.open(imgUrl(m.file.url), '_blank')}
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (m.file) downloadFile(imgUrl(m.file.url), m.file.filename || 'image', m.id || '');
+                              }}
+                              className="absolute inset-x-0 bottom-3 mx-auto w-[90%] opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/60 text-white text-sm font-semibold py-2 rounded-lg flex items-center justify-center gap-2"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                              Download
+                            </button>
+                          </div>
+                          </div>
                         ) : m.file && /\.pdf$/i.test(m.file.filename || '') ? (
+                          <div className="flex flex-col gap-1">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -1259,8 +1381,12 @@ socket.on("online users", (users: string[]) => {
                               </div>
                             ) : (
                               <div className="h-full p-6 flex flex-col items-center justify-center cursor-pointer" onClick={() => m.file && window.open(imgUrl(m.file.url), '_blank')}>
-                                <svg xmlns="https://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                                <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>
+                                {m.file?.thumbnail ? (
+                                  <img src={imgUrl(m.file.thumbnail)} alt="PDF preview" className="w-full h-[160px] object-cover rounded-lg mb-3" />
+                                ) : (
+                                  <svg xmlns="https://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                )}
+                                {!m.file?.thumbnail && <span className="text-red-400 font-bold text-2xl mt-3">PDF</span>}
                                 <div className="text-sm font-medium text-white truncate w-full text-center mt-4">{m.file.filename || 'File'}</div>
                                 <div className="flex gap-2 mt-4">
                                   <button onClick={(e) => { e.stopPropagation(); m.file && window.open(imgUrl(m.file.url), '_blank'); }} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium">
@@ -1275,7 +1401,13 @@ socket.on("online users", (users: string[]) => {
                               </div>
                             )}
                           </div>
+                          </div>
                         ) : m.file && /\.(xlsx?|docx?|txt|mp4|avi|mov|mkv|rar|zip)$/i.test(m.file.filename || '') ? (
+                          <div className="flex flex-col gap-1">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
                               <div className="h-full p-6 flex flex-col items-center justify-center bg-green-900/20">
@@ -1326,10 +1458,11 @@ socket.on("online users", (users: string[]) => {
                               </div>
                             )}
                           </div>
+                          </div>
                         ) : (
                           m.content && (
                             <div className="flex flex-col">
-                              <div className="flex items-baseline gap-2 mb-1">
+                              <div className="flex items-start justify-between gap-2 mb-1">
                                 <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
                                 <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                               </div>
@@ -1390,22 +1523,43 @@ socket.on("online users", (users: string[]) => {
                         </div>
                       ) : (
                         <>
-                          <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-green-900/50" onClick={() => {
-                            const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
-                            const plainText = (found.content || '').replace(/<[^>]*>/g, '');
-                            setEditingId(id); setEditingText(plainText); setContextMenu(null);
-                          }}>
-                            <div className="p-1.5 bg-white/20 rounded-lg">
-                              <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            </div>
-                            <span>Edit Message</span>
-                          </button>
-                          <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-red-900/50" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
-                            <div className="p-1.5 bg-white/20 rounded-lg">
-                              <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                            </div>
-                            <span>Delete Message</span>
-                          </button>
+                          {(() => { const found = messages.find(x => x.id === contextMenu.id); const isOwn = found && String(found.from) === String(myId); return (
+                            <>
+                              {isOwn && (
+                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-green-900/50" onClick={() => {
+                                  const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
+                                  const plainText = (found.content || '').replace(/<[^>]*>/g, '');
+                                  setEditingId(id); setEditingText(plainText); setContextMenu(null);
+                                }}>
+                                  <div className="p-1.5 bg-white/20 rounded-lg">
+                                    <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  </div>
+                                  <span>Edit Message</span>
+                                </button>
+                              )}
+                              <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-blue-900/50" onClick={() => {
+                                const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
+                                setForwardContent(found.content || '');
+                                setForwardSenderName(found.fromName || 'Unknown');
+                                setForwardFile(found.file || null);
+                                setContextMenu(null);
+                                setForwardOpen(true);
+                              }}>
+                                <div className="p-1.5 bg-white/20 rounded-lg">
+                                  <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+                                </div>
+                                <span>Forward</span>
+                              </button>
+                              {isOwn && (
+                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-red-900/50" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                                  <div className="p-1.5 bg-white/20 rounded-lg">
+                                    <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                  </div>
+                                  <span>Delete Message</span>
+                                </button>
+                              )}
+                            </>
+                          ); })()}
                         </>
                       )}
                     </div>
@@ -1497,6 +1651,7 @@ socket.on("online users", (users: string[]) => {
       </div>
       <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser} isOwnProfile={false} />
       <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(undefined); }} groupId={viewingGroupId} />
+      <ForwardSession isOpen={forwardOpen} onClose={() => { setForwardOpen(false); setForwardFile(null); }} messageContent={forwardContent} originalSenderName={forwardSenderName} file={forwardFile} />
     </AppLayout>
   );
 };

@@ -8,8 +8,10 @@ interface AppLayoutProps {
 }
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-  const [workspaceSidebarVisible, setWorkspaceSidebarVisible] = useState(true);
-  const leftOffset = workspaceSidebarVisible ? 135 : 75;
+  const [workspaceSidebarVisible, setWorkspaceSidebarVisible] = useState(false);
+  const wsSidebarWidth = workspaceSidebarVisible ? 60 : 0;
+  const sidebarWidth = 75;
+  const leftOffset = wsSidebarWidth + sidebarWidth;
   
   return (
     <div className="flex h-screen overflow-hidden">
@@ -17,7 +19,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <WorkspaceSidebar onVisibilityChange={setWorkspaceSidebarVisible} />
 
       {/* Original sidebar shifted right */}
-      <div className={`fixed ${workspaceSidebarVisible ? 'left-[60px]' : 'left-0'} top-0 h-full z-30`}>
+      <div className="fixed top-0 h-full z-30" style={{ left: `${wsSidebarWidth}px` }}>
         <Sidebar />
       </div>
       

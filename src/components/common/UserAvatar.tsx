@@ -8,6 +8,8 @@ interface UserAvatarProps {
 }
 
 const UserAvatar: React.FC<UserAvatarProps> = ({ user, size = "md", className = "" }) => {
+  const [hasError, setHasError] = React.useState(false);
+
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/);
     if (parts.length >= 2) {
@@ -24,17 +26,27 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size = "md", className = 
 
   const name = user?.name || "User";
   const avatar = user?.avatar;
+  const src = avatar ? imgUrl(avatar) : null;
 
-  return avatar ? (
-    <img 
-      src={imgUrl(avatar)} 
-      alt={name} 
-      className={`${sizeClasses[size]} rounded-full object-cover ${className}`} 
+  if (process.env.NODE_ENV !== 'production' && avatar) {
+    console.debug('UserAvatar:', { id: user?._id || user?.id, avatar, src, hasError });
+  }
+
+  if (!avatar || hasError) {
+    return (
+      <div className={`${sizeClasses[size]} rounded-full bg-purple-600 flex items-center justify-center text-white font-semibold ${className}`}>
+        {getInitials(name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src || ''}
+      alt={name}
+      onError={() => setHasError(true)}
+      className={`${sizeClasses[size]} rounded-full object-cover ${className}`}
     />
-  ) : (
-    <div className={`${sizeClasses[size]} rounded-full bg-purple-600 flex items-center justify-center text-white font-semibold ${className}`}>
-      {getInitials(name)}
-    </div>
   );
 };
 

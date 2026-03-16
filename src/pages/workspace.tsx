@@ -10,6 +10,7 @@ import { imgUrl } from "@/lib/utils";
 const Workspace = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const isAdmin = (user?.role || user?.Role || '').toString().toLowerCase() === 'admin';
   const [showInput, setShowInput] = useState(false);
   const [name, setName] = useState("");
   const [image, setImage] = useState<File | null>(null);
@@ -47,24 +48,40 @@ const Workspace = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.status === 401) {
-          console.warn('Workspaces fetch unauthorized');
-          navigate('/login');
+          console.warn("Workspaces fetch unauthorized");
+          navigate("/login");
           return;
         }
         if (!res.ok) {
           const err = await res.text();
-          console.error('Workspaces fetch failed', res.status, err);
+          console.error("Workspaces fetch failed", res.status, err);
           return;
         }
         const data = await res.json();
-        setWorkspaces(data.workspaces || []);
+        const workspaces = data.workspaces || [];
+        setWorkspaces(workspaces);
+
+        // If user only belongs to one workspace, auto-select it and go to dashboard
+        if (workspaces.length === 1) {
+          const ws = workspaces[0];
+          try {
+            localStorage.setItem(
+              "currentWorkspace",
+              JSON.stringify({
+                id: ws._id,
+                name: ws.name,
+                image: ws.image,
+                members: ws.members || [],
+              })
+            );
+          } catch (e) {}
+          navigate("/dashboard");
+        }
       } catch (e) {
-        console.error('Workspaces fetch error', e);
+        console.error("Workspaces fetch error", e);
       }
     })();
-  }, []);
-
-  const isAdmin = (user?.role || user?.Role || "").toString().toLowerCase() === "admin";
+  }, [navigate]);
 
   const handleCreate = async () => {
     if (creating) return;
@@ -84,9 +101,9 @@ const Workspace = () => {
 
     try {
       const formData = new FormData();
-      formData.append('name', name.trim());
-      if (image) formData.append('image', image);
-      
+      formData.append("name", name.trim());
+      if (image) formData.append("image", image);
+
       const res = await fetch(`${API_URL}/api/workspaces`, {
         method: "POST",
         body: formData,
@@ -99,13 +116,21 @@ const Workspace = () => {
       } else {
         const ws = data.workspace;
         try {
-          localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] }));
+          localStorage.setItem(
+            "currentWorkspace",
+            JSON.stringify({
+              id: ws._id,
+              name: ws.name,
+              image: ws.image,
+              members: ws.members || [],
+            })
+          );
         } catch (e) {}
         setShowInput(false);
-        setName('');
+        setName("");
         setImage(null);
-        setWorkspaces(prev => [...prev, ws]);
-        navigate('/dashboard');
+        setWorkspaces((prev) => [...prev, ws]);
+        navigate("/dashboard");
       }
     } catch (e) {
       setMsg("Server error");

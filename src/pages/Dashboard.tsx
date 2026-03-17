@@ -1295,7 +1295,7 @@ socket.on("online users", (users: string[]) => {
                             return newSet;
                           });
                         }}
-                        className="absolute top-2 right-2 w-9 h-9 flex items-center justify-center rounded-full bg-purple-600 shadow-lg hover:bg-purple-700 transition z-20"
+                        className=""
                         title="Toggle selection"
                       >
                         {selectedMessages.has(m.id || '') ? (
@@ -1303,7 +1303,7 @@ socket.on("online users", (users: string[]) => {
                             <path d="M20 6L9 17l-5-5" />
                           </svg>
                         ) : (
-                          <span className="block w-4 h-4 rounded-full border border-white/50" />
+                          <span className="" />
                         )}
                       </button>
                     )}
@@ -1553,7 +1553,7 @@ socket.on("online users", (users: string[]) => {
                         )}
                       </>
                     )}
-                  {contextMenu?.id === m.id && (
+                  {(contextMenu && contextMenu.id === m.id) && (
                     <div 
                       ref={menuRef} 
                       style={{ position: 'absolute', right: 0, top: 0, zIndex: 60 }}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Instagram, Facebook, Linkedin, MessageCircle, Upload } from "lucide-react";
 import { API_URL } from "@/lib/config";
 import { imgUrl } from "@/lib/utils";
@@ -8,12 +8,41 @@ interface ProfileSessionProps {
   onClose: () => void;
   user: any;
   isOwnProfile?: boolean;
+  isAdmin?: boolean;
+  onRoleChange?: (userId: string, newRole: string) => void;
 }
 
-const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, isOwnProfile = true }) => {
+const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, isOwnProfile = true, isAdmin = false, onRoleChange }) => {
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(user?.Role || user?.role || 'User');
+
+  useEffect(() => {
+    const userId = user?._id || user?.id;
+    if (!userId) return;
+    const token = localStorage.getItem('token');
+    fetch(`${API_URL}/api/user/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(d => { if (d.user?.Role) setSelectedRole(d.user.Role); }).catch(() => {});
+  }, [user?._id, user?.id]);
+  const [roleUpdating, setRoleUpdating] = useState(false);
+  const VALID_ROLES = ["Developer", "Sales", "User", "Admin"];
+
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const stored = localStorage.getItem('user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (String(u._id || u.id) === String(user?._id || user?.id)) {
+            setSelectedRole(u.Role || u.role || 'User');
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('user-updated', handler);
+    return () => window.removeEventListener('user-updated', handler);
+  }, [user]);
   const [formData, setFormData] = useState({
     description: user?.description || '',
     phone: user?.phone || '',
@@ -94,6 +123,30 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
     }
   };
 
+  const handleRoleChange = async (newRole: string) => {
+    const userId = user?._id || user?.id;
+    if (!userId) return;
+    setRoleUpdating(true);
+    try {
+      const token = localStorage.getItem('token');
+      const ws = (() => { try { return JSON.parse(localStorage.getItem('currentWorkspace') || 'null'); } catch { return null; } })();
+      const res = await fetch(`${API_URL}/api/user/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(ws?.id ? { 'x-workspace-id': ws.id } : {}) },
+        body: JSON.stringify({ Role: newRole })
+      });
+      const data = await res.json();
+      if (data.data) {
+        setSelectedRole(data.data.Role);
+        onRoleChange?.(String(userId), data.data.Role);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRoleUpdating(false);
+    }
+  };
+
   const socialLinks = user?.socialLinks || {};
 
   return (
@@ -143,7 +196,21 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           <div className="text-center mb-8">
             <h3 className="text-2xl font-bold text-white">{user?.name || "User"}</h3>
             {user?.fullName && <p className="text-sm text-gray-400 mt-1">{user.fullName}</p>}
-            <span className="inline-block mt-2 px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-xs font-medium">{user?.Role || user?.role || "User"}</span>
+            {isAdmin && !isOwnProfile ? (
+              <div className="mt-2 flex items-center justify-center gap-2">
+                <select
+                  value={selectedRole}
+                  onChange={(e) => { setSelectedRole(e.target.value); handleRoleChange(e.target.value); }}
+                  disabled={roleUpdating}
+                  className="px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-xs font-medium border border-purple-600/30 focus:outline-none focus:border-purple-500 cursor-pointer disabled:opacity-50"
+                >
+                  {VALID_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                {roleUpdating && <span className="text-xs text-gray-400">Saving...</span>}
+              </div>
+            ) : (
+              <span className="inline-block mt-2 px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-xs font-medium">{selectedRole}</span>
+            )}
           </div>
 
           {/* Description */}

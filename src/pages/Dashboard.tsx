@@ -408,6 +408,18 @@ socket.on("online users", (users: string[]) => {
     socket.on('message deleted', (payload: any) => {
       setMessages(prev => prev.filter(m => String(m.id) !== String(payload.id)));
     });
+    socket.on('role-updated', ({ userId, newRole }) => {
+      try {
+        const stored = localStorage.getItem('user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (String(u._id || u.id) === String(userId)) {
+            localStorage.setItem('user', JSON.stringify({ ...u, Role: newRole }));
+            window.dispatchEvent(new Event('user-updated'));
+          }
+        }
+      } catch (e) {}
+    });
 
     socket.on('group-added-notification', (data: any) => {
       const notifKey = `group-${data.groupId}-${data.message}`;
@@ -1169,29 +1181,29 @@ socket.on("online users", (users: string[]) => {
                   {msgUser && (
                     <UserAvatar user={msgUser} size="sm" className="mt-1" />
                   )}
-                  <div className="flex flex-1 items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2 relative">
                   <div
                     onContextMenu={(e) => { 
                       e.preventDefault(); 
                       if (!m.id) return;
-                      setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); 
+                      setContextMenu({ x: 0, y: 0, id: m.id }); 
                     }}
                     onClick={() => {
                       if (!m.id) return;
                       if (selectedMessages.size === 0) return;
                       setSelectedMessages(prev => {
                         const newSet = new Set(prev);
-                        if (newSet.has(m.id)) {
-                          newSet.delete(m.id);
+                        if (newSet.has(m.id!)) {
+                          newSet.delete(m.id!);
                         } else {
-                          newSet.add(m.id);
+                          newSet.add(m.id!);
                         }
                         return newSet;
                       });
                     }}
                     onDoubleClick={() => {
                       if (!m.id) return;
-                      setSelectedMessages(new Set([m.id]));
+                      setSelectedMessages(new Set([m.id!]));
                     }}
                     className={`relative transition-all duration-200 cursor-pointer px-3 py-2 pr-12 rounded-lg w-full max-w-full flex-1 ${
                       isImage ? 'rounded-[1.5rem]' : ''
@@ -1206,11 +1218,11 @@ socket.on("online users", (users: string[]) => {
                           if (!m.id) return;
                           setSelectedMessages(prev => {
                             const newSet = new Set(prev);
-                            if (newSet.has(m.id)) {
-                              newSet.delete(m.id);
+                            if (newSet.has(m.id!)) {
+                              newSet.delete(m.id!);
                             } else {
                               newSet.clear();
-                              newSet.add(m.id);
+                              newSet.add(m.id!);
                             }
                             return newSet;
                           });
@@ -1342,10 +1354,10 @@ socket.on("online users", (users: string[]) => {
                           </div>
                           <div className="relative inline-block group">
                             <img
-                              src={imgUrl(m.file.url)}
+                              src={imgUrl(m.file!.url)}
                               alt="image"
                               className="w-[360px] h-[290px] object-cover cursor-pointer rounded-2xl transition-all duration-200 transform group-hover:scale-[1.02]"
-                              onClick={() => window.open(imgUrl(m.file.url), '_blank')}
+                              onClick={() => window.open(imgUrl(m.file!.url), '_blank')}
                             />
                             <button
                               onClick={(e) => {
@@ -1473,24 +1485,13 @@ socket.on("online users", (users: string[]) => {
                         )}
                       </>
                     )}
-                  </div>
-                  </div>
-                  </div>
-                  );
-                })}
-
-                {contextMenu && (
-                  <div 
-                    ref={menuRef} 
-                    style={{ 
-                      position: 'fixed', 
-                      left: Math.min(contextMenu.x, window.innerWidth - 320), 
-                      top: Math.min(contextMenu.y, window.innerHeight - 200), 
-                      zIndex: 60 
-                    }}
-                  >
-                    <div className="flex flex-col bg-gradient-to-br from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl">
-                      {confirmDeleteId === contextMenu.id ? (
+                  {contextMenu?.id === m.id && (
+                    <div 
+                      ref={menuRef} 
+                      style={{ position: 'absolute', right: 0, top: 0, zIndex: 60 }}
+                    >
+                      <div className="flex flex-col bg-gradient-to-br from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl">
+                      {confirmDeleteId === contextMenu!.id ? (
                         <div className="p-5 text-sm text-white min-w-[280px]">
                           <div className="flex items-center gap-3 mb-4">
                             <div className="p-2 bg-red-500/20 rounded-full">
@@ -1503,7 +1504,7 @@ socket.on("online users", (users: string[]) => {
                           </div>
                           <div className="flex gap-2">
                             <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-semibold transition-all hover:scale-105 shadow-lg" onClick={async () => {
-                              const id = contextMenu.id; setContextMenu(null); setConfirmDeleteId(null); if (!id) return; const token = localStorage.getItem('token'); if (!token) return;
+                              const id = contextMenu!.id; setContextMenu(null); setConfirmDeleteId(null); if (!id) return; const token = localStorage.getItem('token'); if (!token) return;
                               const endpoint = activeChat?.type === 'group' ? `${SOCKET_URL}/api/group/message/${id}` : `${SOCKET_URL}/api/message/${id}`;
                               try {
                                 const res = await fetch(endpoint, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
@@ -1523,11 +1524,11 @@ socket.on("online users", (users: string[]) => {
                         </div>
                       ) : (
                         <>
-                          {(() => { const found = messages.find(x => x.id === contextMenu.id); const isOwn = found && String(found.from) === String(myId); return (
+                          {(() => { const found = messages.find(x => x.id === contextMenu!.id); const isOwn = found && String(found.from) === String(myId); return (
                             <>
                               {isOwn && (
                                 <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-green-900/50" onClick={() => {
-                                  const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
+                                  const id = contextMenu!.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
                                   const plainText = (found.content || '').replace(/<[^>]*>/g, '');
                                   setEditingId(id); setEditingText(plainText); setContextMenu(null);
                                 }}>
@@ -1538,7 +1539,7 @@ socket.on("online users", (users: string[]) => {
                                 </button>
                               )}
                               <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-blue-900/50" onClick={() => {
-                                const id = contextMenu.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
+                                const id = contextMenu!.id; const found = messages.find(x => x.id === id); if (!found) return setContextMenu(null);
                                 setForwardContent(found.content || '');
                                 setForwardSenderName(found.fromName || 'Unknown');
                                 setForwardFile(found.file || null);
@@ -1551,7 +1552,7 @@ socket.on("online users", (users: string[]) => {
                                 <span>Forward</span>
                               </button>
                               {isOwn && (
-                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-red-900/50" onClick={() => { setConfirmDeleteId(contextMenu.id); }}>
+                                <button className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-semibold transition-all hover:scale-[1.02] shadow-lg hover:shadow-red-900/50" onClick={() => { setConfirmDeleteId(contextMenu!.id); }}>
                                   <div className="p-1.5 bg-white/20 rounded-lg">
                                     <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                                   </div>
@@ -1563,8 +1564,13 @@ socket.on("online users", (users: string[]) => {
                         </>
                       )}
                     </div>
+                    </div>
+                  )}
                   </div>
-                )}
+                  </div>
+                  </div>
+                  );
+                })}
                 <div ref={bottomRef} />
               </div>
 

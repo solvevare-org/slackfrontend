@@ -630,31 +630,34 @@ const DirectMessage = () => {
                   return (
                   <div key={m.id || `msg-${idx}`} className={`group flex justify-start animate-fadeIn items-start gap-2 pb-4 ${idx < messages.length - 1 ? 'border-b border-gray-700/50' : ''}`}>
                   {msgUser && <UserAvatar user={msgUser} size="sm" className="mt-1" />}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2">
                   <div
                     onContextMenu={(e) => { 
                       e.preventDefault(); 
                       if (!m.id) return;
-                      setContextMenu({ x: e.clientX, y: e.clientY, id: m.id }); 
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const menuWidth = 220;
+                      const x = rect.right + 8 + menuWidth > window.innerWidth ? rect.left - menuWidth - 8 : rect.right + 8;
+                      setContextMenu({ x, y: rect.top, id: m.id }); 
                     }}
                     onClick={() => {
                       if (!m.id) return;
                       if (selectedMessages.size === 0) return;
                       setSelectedMessages(prev => {
                         const newSet = new Set(prev);
-                        if (newSet.has(m.id)) {
-                          newSet.delete(m.id);
+                        if (newSet.has(m.id!)) {
+                          newSet.delete(m.id!);
                         } else {
-                          newSet.add(m.id);
+                          newSet.add(m.id!);
                         }
                         return newSet;
                       });
                     }}
                     onDoubleClick={() => {
                       if (!m.id) return;
-                      setSelectedMessages(new Set([m.id]));
+                      setSelectedMessages(new Set([m.id!]));
                     }}
-                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 pr-12 rounded-lg w-full ${
+                    className={`relative transition-all duration-200 cursor-pointer px-3 py-2 rounded-lg w-full max-w-full flex-1 ${
                       isImage ? 'rounded-[1.5rem]' : ''
                     } ${
                       selectedMessages.has(m.id || '') ? 'ring-4 ring-purple-500 ring-offset-2 ring-offset-[#0f1115]' : ''
@@ -724,7 +727,16 @@ const DirectMessage = () => {
                               <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
                               <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                             </div>
-                            <img src={imgUrl(m.file!.url)} alt="image" className="w-[320px] h-[270px] object-cover cursor-pointer" style={{ borderRadius: '1.5rem' }} onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
+                            <div className="relative inline-block group">
+                              <img src={imgUrl(m.file!.url)} alt="image" className="w-[360px] h-[290px] object-cover cursor-pointer rounded-2xl transition-all duration-200 transform group-hover:scale-[1.02]" onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
+                              <button
+                                onClick={(e) => { e.stopPropagation(); if (m.file) downloadFile(imgUrl(m.file.url), m.file.filename || 'image', m.id || ''); }}
+                                className="absolute inset-x-0 bottom-3 mx-auto w-[90%] opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/60 text-white text-sm font-semibold py-2 rounded-lg flex items-center justify-center gap-2"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download
+                              </button>
+                            </div>
                           </div>
                         ) : m.file && /\.pdf$/i.test(m.file?.filename || '') ? (
                           <div className="flex flex-col gap-1">
@@ -836,7 +848,7 @@ const DirectMessage = () => {
                     ref={menuRef} 
                     style={{ 
                       position: 'fixed', 
-                      left: Math.min(contextMenu.x, window.innerWidth - 320), 
+                      right: 16, 
                       top: Math.min(contextMenu.y, window.innerHeight - 200), 
                       zIndex: 60 
                     }}

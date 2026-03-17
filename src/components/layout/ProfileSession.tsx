@@ -17,6 +17,12 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
   const [editing, setEditing] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState(false);
   const [selectedRole, setSelectedRole] = useState(user?.Role || user?.role || 'User');
+  const [displayAvatar, setDisplayAvatar] = useState(user?.avatar || null);
+
+  /* 🔥 Update displayAvatar whenever user ID changes (switching between users) */
+  useEffect(() => {
+    setDisplayAvatar(user?.avatar || null);
+  }, [user?._id, user?.id]);
 
   useEffect(() => {
     const userId = user?._id || user?.id;
@@ -77,9 +83,15 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
       });
       const data = await res.json();
       if (data.user) {
+        // Update state with new avatar
+        setDisplayAvatar(data.user.avatar);
+        
+        // Update localStorage
         const updatedUser = { ...user, avatar: data.user.avatar };
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        window.location.reload();
+        
+        // Dispatch user-updated event for other components
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser }));
       }
     } catch (err) {
       console.error(err);
@@ -157,17 +169,17 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           <button onClick={() => setFullscreenImage(false)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full transition text-white z-[101]">
             <X size={24} />
           </button>
-          <img src={imgUrl(user.avatar)} alt="Profile" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={imgUrl(displayAvatar)} alt="Profile" className="max-w-[90vw] max-h-[90vh] object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 
       <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
-      <div className={`fixed top-0 right-0 h-full w-[420px] bg-[#1A1D21] shadow-2xl z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed top-0 right-0 h-full w-[420px] bg-gradient-to-b from-[#1A1D21] to-[#0f1115] shadow-2xl z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/10">
-          <h2 className="text-xl font-semibold text-white">Profile</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white">
+        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-purple-600/10 to-transparent">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Profile</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white hover:scale-110">
             <X size={20} />
           </button>
         </div>
@@ -177,16 +189,16 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           
           {/* Profile Picture */}
           <div className="flex justify-center mb-8 relative">
-            {user?.avatar ? (
-              <img src={imgUrl(user.avatar)} alt="Profile" className="w-28 h-28 rounded-full object-cover border-4 border-purple-600 cursor-pointer hover:opacity-80 transition" onClick={() => setFullscreenImage(true)} />
+            {displayAvatar ? (
+              <img src={imgUrl(displayAvatar)} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-purple-500 cursor-pointer hover:opacity-90 transition shadow-lg shadow-purple-500/30" onClick={() => setFullscreenImage(true)} />
             ) : (
-              <div className="w-28 h-28 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center text-white text-4xl font-bold border-4 border-purple-500">
+              <div className="w-32 h-32 bg-gradient-to-br from-purple-600 to-purple-800 rounded-full flex items-center justify-center text-white text-5xl font-bold border-4 border-purple-500 shadow-lg shadow-purple-500/30">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}
               </div>
             )}
             {isOwnProfile && (
-              <label className="absolute bottom-0 right-[calc(50%-56px)] bg-purple-600 rounded-full p-2.5 shadow-lg cursor-pointer hover:bg-purple-700 transition">
-                {uploading ? <span className="text-xs text-white">...</span> : <Upload size={18} className="text-white" />}
+              <label className="absolute bottom-2 right-0 bg-gradient-to-r from-purple-600 to-purple-700 rounded-full p-3 shadow-lg cursor-pointer hover:from-purple-700 hover:to-purple-800 transition border-2 border-white/20">
+                {uploading ? <span className="text-xs text-white font-semibold">...</span> : <Upload size={18} className="text-white" />}
                 <input type="file" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} className="hidden" />
               </label>
             )}
@@ -194,98 +206,110 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
 
           {/* Name */}
           <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-white">{user?.name || "User"}</h3>
+            <h3 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">{user?.name || "User"}</h3>
             {user?.fullName && <p className="text-sm text-gray-400 mt-1">{user.fullName}</p>}
             {isAdmin && !isOwnProfile ? (
-              <div className="mt-2 flex items-center justify-center gap-2">
+              <div className="mt-3 flex items-center justify-center gap-2">
                 <select
                   value={selectedRole}
                   onChange={(e) => { setSelectedRole(e.target.value); handleRoleChange(e.target.value); }}
                   disabled={roleUpdating}
-                  className="px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-xs font-medium border border-purple-600/30 focus:outline-none focus:border-purple-500 cursor-pointer disabled:opacity-50"
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition focus:outline-none cursor-pointer disabled:opacity-50 ${
+                    selectedRole === 'Admin' ? 'bg-red-600/20 text-red-400 border-red-500/40' :
+                    selectedRole === 'Developer' ? 'bg-blue-600/20 text-blue-400 border-blue-500/40' :
+                    selectedRole === 'Sales' ? 'bg-yellow-600/20 text-yellow-400 border-yellow-500/40' :
+                    'bg-purple-600/20 text-purple-400 border-purple-500/40'
+                  }`}
                 >
                   {VALID_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
-                {roleUpdating && <span className="text-xs text-gray-400">Saving...</span>}
+                {roleUpdating && <span className="text-xs text-gray-400 animate-pulse">Saving...</span>}
               </div>
             ) : (
-              <span className="inline-block mt-2 px-3 py-1 bg-purple-600/20 text-purple-400 rounded-full text-xs font-medium">{selectedRole}</span>
+              <span className={`inline-block mt-3 px-4 py-2 rounded-lg text-sm font-semibold ${
+                selectedRole === 'Admin' ? 'bg-red-600/20 text-red-400' :
+                selectedRole === 'Developer' ? 'bg-blue-600/20 text-blue-400' :
+                selectedRole === 'Sales' ? 'bg-yellow-600/20 text-yellow-400' :
+                'bg-purple-600/20 text-purple-400'
+              }`}>{selectedRole}</span>
             )}
           </div>
 
           {/* Description */}
           <div className="mb-6">
-            <h4 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-              <span className="w-1 h-4 bg-purple-600 rounded"></span>
+            <h4 className="text-sm font-bold text-gray-200 mb-3 flex items-center gap-3 uppercase tracking-wide">
+              <span className="w-2 h-5 bg-gradient-to-b from-purple-600 to-purple-800 rounded"></span>
               About
             </h4>
             {editing ? (
-              <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:outline-none" rows={3} placeholder="Tell us about yourself..." />
+              <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-4 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:bg-white/5 focus:outline-none transition placeholder-gray-500" rows={3} placeholder="Tell us about yourself..." />
             ) : (
-              <p className="text-sm text-gray-400 bg-[#0f1115] p-3 rounded-lg">{user?.description || 'No description added yet'}</p>
+              <p className="text-sm text-gray-300 bg-gradient-to-br from-[#1A1D21] to-[#0f1115] p-4 rounded-lg border border-white/5">{user?.description || '📝 No description added yet'}</p>
             )}
           </div>
 
           {/* Contact Information */}
           <div className="mb-6">
-            <h4 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-              <span className="w-1 h-4 bg-purple-600 rounded"></span>
-              Contact Information
+            <h4 className="text-sm font-bold text-gray-200 mb-3 flex items-center gap-3 uppercase tracking-wide">
+              <span className="w-2 h-5 bg-gradient-to-b from-blue-600 to-blue-800 rounded"></span>
+              Contact
             </h4>
-            <div className="space-y-3 bg-[#0f1115] p-4 rounded-lg">
+            <div className="space-y-3 bg-gradient-to-br from-[#1A1D21] to-[#0f1115] p-4 rounded-lg border border-white/5">
               <div className="flex items-center gap-3 text-sm">
-                <span className="text-gray-400 font-medium min-w-[60px]">Email:</span>
-                <span className="text-white">{user?.email || "N/A"}</span>
+                <span className="text-gray-400 font-semibold min-w-[70px]">📧 Email:</span>
+                <span className="text-white truncate">{user?.email || "N/A"}</span>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <span className="text-gray-400 font-medium min-w-[60px]">Phone:</span>
+                <span className="text-gray-400 font-semibold min-w-[70px]">📱 Phone:</span>
                 {editing ? (
-                  <input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="flex-1 p-2 bg-[#1A1D21] border border-white/10 rounded text-sm text-white focus:border-purple-600 focus:outline-none" placeholder="Add phone number" />
+                  <input value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} className="flex-1 p-2 bg-[#1A1D21] border border-white/10 rounded text-sm text-white focus:border-blue-600 focus:outline-none transition" placeholder="Add phone number" />
                 ) : (
-                  <span className="text-white">{user?.phone || 'Not added'}</span>
+                  <span className="text-white">{user?.phone || '❌ Not added'}</span>
                 )}
               </div>
             </div>
           </div>
 
           {/* Social Links */}
-          <div className="mb-6">
-            <h4 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-              <span className="w-1 h-4 bg-purple-600 rounded"></span>
+          <div className="mb-8">
+            <h4 className="text-sm font-bold text-gray-200 mb-3 flex items-center gap-3 uppercase tracking-wide">
+              <span className="w-2 h-5 bg-gradient-to-b from-pink-600 to-pink-800 rounded"></span>
               Social Links
             </h4>
             {editing ? (
               <div className="space-y-3">
-                <input value={formData.instagram} onChange={(e) => setFormData({...formData, instagram: e.target.value})} placeholder="Instagram URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:outline-none" />
-                <input value={formData.facebook} onChange={(e) => setFormData({...formData, facebook: e.target.value})} placeholder="Facebook URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:outline-none" />
-                <input value={formData.linkedin} onChange={(e) => setFormData({...formData, linkedin: e.target.value})} placeholder="LinkedIn URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:outline-none" />
-                <input value={formData.whatsapp} onChange={(e) => setFormData({...formData, whatsapp: e.target.value})} placeholder="WhatsApp URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-purple-600 focus:outline-none" />
+                <input value={formData.instagram} onChange={(e) => setFormData({...formData, instagram: e.target.value})} placeholder="Instagram URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-pink-600 focus:bg-white/5 focus:outline-none transition placeholder-gray-500" />
+                <input value={formData.facebook} onChange={(e) => setFormData({...formData, facebook: e.target.value})} placeholder="Facebook URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-blue-600 focus:bg-white/5 focus:outline-none transition placeholder-gray-500" />
+                <input value={formData.linkedin} onChange={(e) => setFormData({...formData, linkedin: e.target.value})} placeholder="LinkedIn URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-blue-700 focus:bg-white/5 focus:outline-none transition placeholder-gray-500" />
+                <input value={formData.whatsapp} onChange={(e) => setFormData({...formData, whatsapp: e.target.value})} placeholder="WhatsApp URL" className="w-full p-3 bg-[#0f1115] border border-white/10 rounded-lg text-sm text-white focus:border-green-600 focus:bg-white/5 focus:outline-none transition placeholder-gray-500" />
               </div>
             ) : (
-              <div className="flex gap-3 bg-[#0f1115] p-4 rounded-lg">
-                {socialLinks.instagram && (
-                  <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 text-white rounded-xl hover:opacity-80 transition shadow-lg">
-                    <Instagram size={22} />
-                  </a>
-                )}
-                {socialLinks.facebook && (
-                  <a href={socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="p-3 bg-blue-600 text-white rounded-xl hover:opacity-80 transition shadow-lg">
-                    <Facebook size={22} />
-                  </a>
-                )}
-                {socialLinks.whatsapp && (
-                  <a href={socialLinks.whatsapp} target="_blank" rel="noopener noreferrer" className="p-3 bg-green-500 text-white rounded-xl hover:opacity-80 transition shadow-lg">
-                    <MessageCircle size={22} />
-                  </a>
-                )}
-                {socialLinks.linkedin && (
-                  <a href={socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="p-3 bg-blue-700 text-white rounded-xl hover:opacity-80 transition shadow-lg">
-                    <Linkedin size={22} />
-                  </a>
-                )}
-                {!socialLinks.instagram && !socialLinks.facebook && !socialLinks.whatsapp && !socialLinks.linkedin && (
-                  <p className="text-sm text-gray-500">No social links added yet</p>
-                )}
+              <div className="bg-gradient-to-br from-[#1A1D21] to-[#0f1115] p-4 rounded-lg border border-white/5">
+                <div className="flex flex-wrap gap-3">
+                  {socialLinks.instagram && (
+                    <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="p-4 bg-gradient-to-br from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition shadow-lg hover:shadow-pink-500/30 group">
+                      <Instagram size={24} className="group-hover:scale-110 transition" />
+                    </a>
+                  )}
+                  {socialLinks.facebook && (
+                    <a href={socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="p-4 bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition shadow-lg hover:shadow-blue-500/30 group">
+                      <Facebook size={24} className="group-hover:scale-110 transition" />
+                    </a>
+                  )}
+                  {socialLinks.whatsapp && (
+                    <a href={socialLinks.whatsapp} target="_blank" rel="noopener noreferrer" className="p-4 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition shadow-lg hover:shadow-green-500/30 group">
+                      <MessageCircle size={24} className="group-hover:scale-110 transition" />
+                    </a>
+                  )}
+                  {socialLinks.linkedin && (
+                    <a href={socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="p-4 bg-gradient-to-br from-blue-700 to-blue-800 text-white rounded-xl hover:from-blue-800 hover:to-blue-900 transition shadow-lg hover:shadow-blue-600/30 group">
+                      <Linkedin size={24} className="group-hover:scale-110 transition" />
+                    </a>
+                  )}
+                  {!socialLinks.instagram && !socialLinks.facebook && !socialLinks.whatsapp && !socialLinks.linkedin && (
+                    <p className="text-sm text-gray-400 w-full text-center py-4">🔗 No social links added yet</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -293,11 +317,11 @@ const ProfileSession: React.FC<ProfileSessionProps> = ({ isOpen, onClose, user, 
           {/* Edit/Save Button */}
           {isOwnProfile && (
             <>
-              <button onClick={() => { if (editing) handleSave(); else setEditing(true); }} className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition font-medium shadow-lg">
-                {editing ? 'Save Changes' : 'Edit Profile'}
+              <button onClick={() => { if (editing) handleSave(); else setEditing(true); }} className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition font-semibold shadow-lg hover:shadow-purple-500/30">
+                {editing ? '💾 Save Changes' : '✏️ Edit Profile'}
               </button>
               {editing && (
-                <button onClick={() => setEditing(false)} className="w-full py-3 mt-3 bg-white/5 text-gray-300 rounded-lg hover:bg-white/10 transition font-medium">
+                <button onClick={() => setEditing(false)} className="w-full py-3 mt-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg hover:from-gray-700 hover:to-gray-800 transition font-semibold">
                   Cancel
                 </button>
               )}

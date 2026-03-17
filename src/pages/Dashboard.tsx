@@ -294,6 +294,17 @@ const Dashboard = () => {
 
   }, [navigate]);
 
+  /* ================= LISTEN FOR USER UPDATES ================= */
+  useEffect(() => {
+    const handleUserUpdate = (event: any) => {
+      if (event.detail) {
+        setUser(event.detail);
+      }
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
+  }, []);
+
   /* ================= SOCKET ================= */
   useEffect(() => {
     if (!myId) return;
@@ -463,6 +474,19 @@ socket.on("online users", (users: string[]) => {
           }
         }
       } catch (e) {}
+    });
+
+    socket.on('new-notification', (notification: any) => {
+      try {
+        emitNotification({
+          type: notification.type || 'system',
+          title: notification.title || 'Notification',
+          message: notification.message || '',
+          duration: 5000
+        });
+      } catch (e) {
+        console.error('notification emit error', e);
+      }
     });
 
     socket.on('group-added-notification', (data: any) => {

@@ -68,6 +68,17 @@ const Sidebar: React.FC = () => {
     }
   }, []);
 
+  /* 🔥 Listen for user updates (avatar, profile changes) */
+  useEffect(() => {
+    const handleUserUpdate = (event: any) => {
+      if (event.detail) {
+        setUser(event.detail);
+      }
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
+  }, []);
+
   /* 🔐 Role Check */
   const roleStr = (user?.role || user?.Role || "").toLowerCase();
   const isAdmin = roleStr === "admin";

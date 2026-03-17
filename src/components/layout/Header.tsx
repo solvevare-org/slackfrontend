@@ -67,6 +67,17 @@ const Header: React.FC = () => {
     } catch (e) { }
   }, []);
 
+  /* Listen for user updates (avatar, profile changes) */
+  React.useEffect(() => {
+    const handleUserUpdate = (event: any) => {
+      if (event.detail) {
+        setUser(event.detail);
+      }
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
+  }, []);
+
   React.useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);

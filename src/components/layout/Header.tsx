@@ -41,6 +41,23 @@ const Header: React.FC = () => {
       const raw = localStorage.getItem('currentWorkspace');
       if (raw) setCurrentWorkspace(JSON.parse(raw));
     } catch (e) { }
+    
+    // Listen for workspace changes in localStorage
+    const handleStorageChange = () => {
+      try {
+        const raw = localStorage.getItem('currentWorkspace');
+        if (raw) setCurrentWorkspace(JSON.parse(raw));
+      } catch (e) { }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    // Also listen for custom event when workspace changes within same tab
+    window.addEventListener('workspace-changed', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('workspace-changed', handleStorageChange);
+    };
   }, []);
 
   React.useEffect(() => {

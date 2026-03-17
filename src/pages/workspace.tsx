@@ -74,6 +74,7 @@ const Workspace = () => {
                 members: ws.members || [],
               })
             );
+            localStorage.setItem("lastSelectedWorkspaceId", ws._id);
           } catch (e) {}
           navigate("/dashboard");
         }
@@ -125,6 +126,7 @@ const Workspace = () => {
               members: ws.members || [],
             })
           );
+          localStorage.setItem("lastSelectedWorkspaceId", ws._id);
         } catch (e) {}
         setShowInput(false);
         setName("");
@@ -140,7 +142,10 @@ const Workspace = () => {
   };
 
   const openWorkspace = (ws: any) => {
-    try { localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] })); } catch (e) {}
+    try { 
+      localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] })); 
+      localStorage.setItem('lastSelectedWorkspaceId', ws._id);
+    } catch (e) {}
     navigate('/dashboard');
   };
 

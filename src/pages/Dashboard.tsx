@@ -168,7 +168,8 @@ const Dashboard = () => {
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
-    const rawWorkspace = localStorage.getItem("currentWorkspace");
+    let rawWorkspace = localStorage.getItem("currentWorkspace");
+    const lastWorkspaceId = localStorage.getItem("lastSelectedWorkspaceId");
 
     if (!storedUser || !token) {
       navigate("/login");
@@ -179,6 +180,17 @@ const Dashboard = () => {
     setUser(parsed);
     // DEBUG: verify avatar URL being loaded
     console.log('Loaded user:', { id: parsed._id || parsed.id, avatar: parsed.avatar });
+
+    // If NO currentWorkspace but lastWorkspaceId exists, restore it immediately
+    if (!rawWorkspace && lastWorkspaceId) {
+      try {
+        const tempWs = JSON.stringify({ id: lastWorkspaceId });
+        localStorage.setItem('currentWorkspace', tempWs);
+        rawWorkspace = tempWs;
+      } catch (e) {
+        console.error('Failed to restore last workspace', e);
+      }
+    }
 
     const currentWs = rawWorkspace ? JSON.parse(rawWorkspace) : null;
 
@@ -192,11 +204,30 @@ const Dashboard = () => {
         if (!d?.success) {
           setWorkspaceDeleted(true);
           setDeletedWorkspaceName(currentWs?.name || 'Workspace');
+          // Clear invalid workspace and redirect to selection
+          localStorage.removeItem('currentWorkspace');
+          localStorage.removeItem('lastSelectedWorkspaceId');
+          navigate('/workspace');
           return;
         }
 
         const workspace = d.workspace;
         const myUserId = parsed._id || parsed.id;
+
+        // Update currentWorkspace with full details
+        try {
+          localStorage.setItem(
+            'currentWorkspace',
+            JSON.stringify({
+              id: workspace._id,
+              name: workspace.name,
+              image: workspace.image,
+              members: workspace.members || [],
+            })
+          );
+          // Save as last selected workspace
+          localStorage.setItem('lastSelectedWorkspaceId', workspace._id);
+        } catch (e) {}
 
         setDmUsers(
           workspace.members.filter(
@@ -205,49 +236,62 @@ const Dashboard = () => {
         );
 
         setChannels(workspace.channels || []);
+        
+        // Emit event to notify Header of workspace change
+        try {
+          window.dispatchEvent(new Event('workspace-changed'));
+        } catch (e) {}
       } catch (err) {
+        console.error('Failed to load workspace:', err);
         setWorkspaceDeleted(true);
         setDeletedWorkspaceName(currentWs?.name || 'Workspace');
+        localStorage.removeItem('currentWorkspace');
+        localStorage.removeItem('lastSelectedWorkspaceId');
+        navigate('/workspace');
       }
     };
 
-    // If there is no workspace selected, try to auto-select when only one workspace exists
-    if (!currentWs?.id) {
-      (async () => {
-        try {
-          const res = await fetch(`${API_URL}/api/workspaces`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json();
-          const workspaces = data.workspaces || [];
-
-          if (workspaces.length === 1) {
-            const ws = workspaces[0];
-            try {
-              localStorage.setItem(
-                'currentWorkspace',
-                JSON.stringify({
-                  id: ws._id,
-                  name: ws.name,
-                  image: ws.image,
-                  members: ws.members || [],
-                })
-              );
-            } catch (e) {}
-            await loadWorkspace(ws._id);
-            return;
-          }
-        } catch (e) {
-          // ignore
-        }
-
-        navigate("/workspace");
-      })();
-
+    // If workspace is selected, load it
+    if (currentWs?.id) {
+      loadWorkspace(currentWs.id);
       return;
     }
 
-    loadWorkspace(currentWs.id);
+    // If no workspace selected and no last workspace, fetch available workspaces
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/workspaces`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        const workspaces = data.workspaces || [];
+
+        // If single workspace, auto-select it
+        if (workspaces.length === 1) {
+          const ws = workspaces[0];
+          try {
+            localStorage.setItem(
+              'currentWorkspace',
+              JSON.stringify({
+                id: ws._id,
+                name: ws.name,
+                image: ws.image,
+                members: ws.members || [],
+              })
+            );
+            localStorage.setItem('lastSelectedWorkspaceId', ws._id);
+          } catch (e) {}
+          await loadWorkspace(ws._id);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to fetch workspaces:', e);
+      }
+
+      // No workspace to auto-select, show workspace selection page
+      navigate("/workspace");
+    })();
+
   }, [navigate]);
 
   /* ================= SOCKET ================= */

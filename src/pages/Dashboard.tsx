@@ -71,16 +71,28 @@ const Dashboard = () => {
   const [showChannels, setShowChannels] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
-  // helper to format preview dates (same logic as DM page)
+  // helper to format preview dates
   const formatDate = (iso?: string) => {
     if (!iso) return '';
     const d = new Date(iso);
     const now = new Date();
     if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const y = new Date(now);
-    y.setDate(now.getDate() - 1);
+    const y = new Date(now); y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  // format message timestamp - show date+time if older than 24h
+  const formatMsgTime = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    if (diffMs < 24 * 60 * 60 * 1000) return time;
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
   };
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -293,6 +305,46 @@ const Dashboard = () => {
     })();
 
   }, [navigate]);
+
+  /* ================= LISTEN FOR WORKSPACE CHANGES ================= */
+  useEffect(() => {
+    const handleWorkspaceChange = () => {
+      const token = localStorage.getItem('token');
+      const rawWorkspace = localStorage.getItem('currentWorkspace');
+      const currentWs = rawWorkspace ? JSON.parse(rawWorkspace) : null;
+      if (!token || !currentWs?.id) return;
+
+      // Reset state
+      setMessages([]);
+      setActiveChat(null);
+      setChannels([]);
+      setDmUsers([]);
+      setDmPreviews({});
+      setUnreadCounts({});
+      localStorage.removeItem('activeChat');
+
+      // Reload workspace data
+      fetch(`${API_URL}/api/workspaces/${currentWs.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (!d?.success) { navigate('/workspace'); return; }
+          const workspace = d.workspace;
+          const myUserId = user?._id || user?.id;
+          try {
+            localStorage.setItem('currentWorkspace', JSON.stringify({ id: workspace._id, name: workspace.name, image: workspace.image, members: workspace.members || [] }));
+            localStorage.setItem('lastSelectedWorkspaceId', workspace._id);
+          } catch (e) {}
+          setDmUsers(workspace.members.filter((u: IUser) => (u._id || u.id) !== myUserId));
+          setChannels(workspace.channels || []);
+        })
+        .catch(() => navigate('/workspace'));
+    };
+
+    window.addEventListener('workspace-changed', handleWorkspaceChange);
+    return () => window.removeEventListener('workspace-changed', handleWorkspaceChange);
+  }, [user, navigate]);
 
   /* ================= LISTEN FOR USER UPDATES ================= */
   useEffect(() => {
@@ -962,269 +1014,156 @@ socket.on("online users", (users: string[]) => {
   return (
     <AppLayout>
       {fullscreenImage && (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center backdrop-blur-sm" onClick={() => setFullscreenImage(null)}>
-          <button onClick={() => setFullscreenImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all hover:rotate-90 duration-300 text-white z-[101]">
-            <X size={24} />
-          </button>
-          <img src={imgUrl(fullscreenImage)} alt="Group" className="max-w-[90vw] max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
-        </div>  )}
-      <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center" onClick={() => setFullscreenImage(null)}>
+          <button onClick={() => setFullscreenImage(null)} className="absolute top-6 right-6 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white z-[101]"><X size={20} /></button>
+          <img src={imgUrl(fullscreenImage)} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
 
-        {/* SIDEBAR */}
-        <aside className="w-[280px] bg-gradient-to-b from-[#1A1D21]/95 to-[#141619]/95 backdrop-blur-xl border-r border-purple-500/30 shadow-2xl flex flex-col overflow-hidden scrollbar-hide">
-          <div className="p-4 border-b border-purple-500/20 sticky top-0 z-20 bg-[#1A1D21]/95">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-purple-500/20 rounded-lg">
-                <MessageSquare className="w-4 h-4 text-purple-400" />
+      <div className="flex h-full overflow-hidden text-white" style={{background:'#1a1d21'}}>
+
+        {/* ── SIDEBAR ── */}
+        <aside className="w-[260px] flex-shrink-0 flex flex-col h-full overflow-hidden" style={{background:'#19171d', borderRight:'1px solid rgba(255,255,255,0.08)'}}>
+
+          {/* Sidebar header */}
+          <div className="flex-shrink-0 px-3 pt-3 pb-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-2 mb-1">Conversations</p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-1" style={{scrollbarWidth:'none'}}>
+
+            {/* Channels */}
+            <div
+              onClick={() => setShowChannels(!showChannels)}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer hover:bg-white/5 group mb-0.5"
+            >
+              {showChannels
+                ? <ChevronDown size={14} className="text-gray-400" />
+                : <ChevronRight size={14} className="text-gray-400" />}
+              <span className="text-sm font-semibold text-gray-300 group-hover:text-white">Channels</span>
+              <span className="ml-auto text-[11px] text-gray-500">{channels.length}</span>
+            </div>
+
+            {showChannels && (
+              <div className="mb-2">
+                {channels.map((c) => (
+                  <div
+                    key={c._id}
+                    onClick={() => { const ac={type:'group' as const,id:c._id,name:c.name}; setActiveChat(ac); setRemovedFromGroups(p=>{const s=new Set(p);s.delete(c._id);return s;}); try{localStorage.setItem('activeChat',JSON.stringify(ac))}catch(e){} }}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors group ${
+                      activeChat?.id===c._id ? 'bg-[#522653] text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    {c.image?.url
+                      ? <img src={imgUrl(c.image.url)} alt={c.name} className="w-5 h-5 rounded object-cover flex-shrink-0" onClick={(e)=>{e.stopPropagation();setViewingGroupId(c._id);setGroupProfileOpen(true);}} />
+                      : <Hash size={16} className="flex-shrink-0 text-gray-500 group-hover:text-gray-300" />}
+                    <span className="text-sm truncate flex-1">{c.name}</span>
+                    {unreadCounts[c._id]>0 && <span className="text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{unreadCounts[c._id]}</span>}
+                  </div>
+                ))}
               </div>
-              <h3 className="text-sm font-bold text-white">Conversations</h3>
+            )}
+
+            {/* DMs */}
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer hover:bg-white/5 group mb-0.5 mt-1">
+              <ChevronDown size={14} className="text-gray-400" />
+              <span className="text-sm font-semibold text-gray-300 group-hover:text-white">Direct Messages</span>
+              <span className="ml-auto text-[11px] text-gray-500">{dmUsers.length}</span>
             </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-hide" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
 
-          <div
-            onClick={() => setShowChannels(!showChannels)}
-            className="flex items-center gap-2 cursor-pointer mb-3 px-3 py-2.5 rounded-xl hover:bg-purple-600/10 transition-all group border border-transparent hover:border-purple-500/20"
-          >
-            {showChannels ? <ChevronDown size={18} className="text-purple-400 group-hover:text-purple-300 transition" /> : <ChevronRight size={18} className="text-purple-400 group-hover:text-purple-300 transition" />}
-            <Hash size={16} className="text-purple-400" />
-            <span className="font-semibold text-gray-200 group-hover:text-white transition">Channels</span>
-            <span className="ml-auto text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{channels.length}</span>
-          </div>
-
-          {showChannels && (
-            <div className="space-y-2 mb-4">
-              {channels.map((c) => (
-                <div
-                  key={c._id}
-                  onClick={() => {
-                    const ac = { type: "group" as const, id: c._id, name: c.name }
-                    setActiveChat(ac)
-                    setRemovedFromGroups(prev => {
-                      const newSet = new Set(prev);
-                      newSet.delete(c._id);
-                      return newSet;
-                    });
-                    try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
-                  }}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
-                    activeChat?.id === c._id 
-                      ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 text-white border border-purple-500/40 shadow-lg shadow-purple-900/20' 
-                      : 'hover:bg-purple-500/10 text-gray-300 hover:text-white border border-transparent hover:border-purple-500/20'
-                  }`}
-                >
-                  {c.image?.url ? (
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-purple-500 blur-md opacity-30 rounded-lg"></div>
-                      <img 
-                        src={imgUrl(c.image.url)} 
-                        alt={c.name} 
-                        className="relative w-8 h-8 rounded-lg object-cover cursor-pointer hover:opacity-80 transition border border-purple-500/30"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewingGroupId(c._id);
-                          setGroupProfileOpen(true);
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition">
-                      <Hash size={14} className="text-purple-400" />
-                    </div>
-                  )}
-                  <span className="text-sm font-medium flex-1">{c.name}</span>
-                  {unreadCounts[c._id] > 0 && (
-                    <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
-                      {unreadCounts[c._id]}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <hr className="my-4 border-purple-500/30" />
-
-          <div className="flex items-center gap-2 mb-3 px-3">
-            <div className="p-1 bg-green-500/20 rounded">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            </div>
-            <span className="text-xs font-semibold text-gray-400">Direct Messages</span>
-            <span className="ml-auto text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{dmUsers.length}</span>
-          </div>
-
-          <div className="space-y-2">
             {dmUsers.map((u) => {
-              const isOnline = onlineUsers.includes(u._id || u.id || '');
-              const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
+              const isOnline = onlineUsers.includes(u._id||u.id||'');
+              const hasUnread = unreadCounts[u._id||u.id||'']>0;
+              const preview = dmPreviews[u._id||u.id||''];
               return (
                 <div
                   key={u._id}
-                  onClick={() => {
-                    const ac = { type: "dm" as const, id: u._id!, name: u.name! }
-                    setActiveChat(ac)
-                    try { localStorage.setItem('activeChat', JSON.stringify(ac)) } catch (e) {}
-                  }}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
-                    activeChat?.id === u._id 
-                      ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 border border-purple-500/40 shadow-lg shadow-purple-900/20' 
-                      : 'hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20'
+                  onClick={() => { const ac={type:'dm' as const,id:u._id!,name:u.name!}; setActiveChat(ac); try{localStorage.setItem('activeChat',JSON.stringify(ac))}catch(e){} }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors group ${
+                    activeChat?.id===u._id ? 'bg-[#522653] text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <div className="relative" onClick={async (e) => { 
-                    e.stopPropagation(); 
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                    const data = await res.json();
-                    setViewingUser(data.user || u); 
-                    setProfileOpen(true); 
-                  }}>
+                  <div className="relative flex-shrink-0" onClick={async(e)=>{e.stopPropagation();const token=localStorage.getItem('token');const res=await fetch(`${SOCKET_URL}/api/user/${u._id||u.id}`,{headers:{Authorization:`Bearer ${token}`}});const data=await res.json();setViewingUser(data.user||u);setProfileOpen(true);}}>
                     <UserAvatar user={u} size="sm" />
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
-                        isOnline ? "bg-green-500 shadow-lg shadow-green-500/50" : "bg-gray-500"
-                      }`}
-                    />
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#19171d] ${isOnline?'bg-green-500':'bg-gray-600'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-200 group-hover:text-white transition truncate">{u.name}</span>
-                      {dmPreviews[u._id || u.id || ''] && (
-                        <span className="text-xs text-gray-400 ml-2">
-                          {formatDate(dmPreviews[u._id || u.id || ''].createdAt)}
-                        </span>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm truncate">{u.name}</span>
+                      {preview && <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0">{formatDate(preview.createdAt)}</span>}
                     </div>
-                    {dmPreviews[u._id || u.id || ''] && (
-                      <p className="text-xs text-gray-400 truncate">
-                        {dmPreviews[u._id || u.id || ''].from === (user?._id||user?.id)
-                          ? `You: ${hideUrls((dmPreviews[u._id || u.id || ''].content||'').replace(/<[^>]+>/g, ''))}`
-                          : hideUrls((dmPreviews[u._id || u.id || ''].content||'').replace(/<[^>]+>/g, ''))}
-                      </p>
-                    )}
+                    {preview && <p className="text-[11px] text-gray-500 truncate">{preview.from===(user?._id||user?.id)?`You: ${hideUrls((preview.content||'').replace(/<[^>]+>/g,''))}`:hideUrls((preview.content||'').replace(/<[^>]+>/g,''))}</p>}
                   </div>
-                  {hasUnread && (
-                    <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
-                      {unreadCounts[u._id || u.id || '']}
-                    </span>
-                  )}
+                  {hasUnread && <span className="text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center flex-shrink-0">{unreadCounts[u._id||u.id||'']}</span>}
                 </div>
               );
             })}
           </div>
-          </div>
         </aside>
 
-        <main className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-[#0f1115] to-[#0a0b0d]">
+        {/* ── MAIN ── */}
+        <main className="flex-1 flex flex-col h-full overflow-hidden" style={{background:'#1a1d21'}}>
           {!activeChat ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="w-24 h-24 bg-gradient-to-br from-white to-gray-100 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-2xl">
-                  <span className="text-[#4A154B] font-bold text-5xl">SV</span>
+                <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 mx-auto shadow-xl">
+                  <span className="text-[#4A154B] font-bold text-4xl">SV</span>
                 </div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent mb-3">Welcome Back, {user?.name}!</h1>
-                <p className="text-gray-400 text-lg">Select a channel or start a conversation to begin</p>
+                <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {user?.name}!</h1>
+                <p className="text-gray-400">Select a channel or DM to start chatting</p>
               </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full">
-              <div className="flex-shrink-0 p-5 border-b border-purple-500/30 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-xl shadow-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    {activeChat.type === 'group' ? (
-                      channels.find(c => c._id === activeChat.id)?.image?.url ? (
-                        <div className="relative">
-                          <div className="absolute inset-0 bg-purple-500 blur-lg opacity-40 rounded-xl"></div>
-                          <img 
-                            src={imgUrl(channels.find(c => c._id === activeChat.id)!.image!.url)} 
-                            alt={activeChat.name} 
-                            className="relative w-12 h-12 rounded-xl object-cover cursor-pointer hover:opacity-80 transition shadow-xl border-2 border-purple-500/30"
-                            onClick={() => { setViewingGroupId(activeChat.id); setGroupProfileOpen(true); }}
-                          />
-                        </div>
-                      ) : (
-                        <div className="relative">
-                          <div className="absolute inset-0 bg-purple-500 blur-lg opacity-40 rounded-xl"></div>
-                          <div 
-                            className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-xl border-2 border-purple-500/30 cursor-pointer hover:opacity-80 transition"
-                            onClick={() => { setViewingGroupId(activeChat.id); setGroupProfileOpen(true); }}
-                          >
-                            <Hash size={22} />
-                          </div>
-                        </div>
-                      )
+            <div className="flex flex-col h-full overflow-hidden">
+
+              {/* ── CHAT HEADER ── */}
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'#1a1d21'}}>
+                <div className="flex items-center gap-3">
+                  {activeChat.type==='group' ? (
+                    channels.find(c=>c._id===activeChat.id)?.image?.url ? (
+                      <img src={imgUrl(channels.find(c=>c._id===activeChat.id)!.image!.url)} alt={activeChat.name}
+                        className="w-8 h-8 rounded-lg object-cover cursor-pointer border border-white/10"
+                        onClick={()=>{setViewingGroupId(activeChat.id);setGroupProfileOpen(true);}}
+                      />
                     ) : (
-                      <div 
-                        className="cursor-pointer"
-                        onClick={async () => {
-                          const chatUser = dmUsers.find(u => (u._id || u.id) === activeChat.id);
-                          if (!chatUser) return;
-                          const token = localStorage.getItem('token');
-                          const res = await fetch(`${SOCKET_URL}/api/user/${chatUser._id || chatUser.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                          const data = await res.json();
-                          setViewingUser(data.user || chatUser);
-                          setProfileOpen(true);
-                        }}
+                      <div className="w-8 h-8 rounded-lg bg-purple-800/60 flex items-center justify-center cursor-pointer"
+                        onClick={()=>{setViewingGroupId(activeChat.id);setGroupProfileOpen(true);}}
                       >
-                        <UserAvatar user={dmUsers.find(u => (u._id || u.id) === activeChat.id)} size="md" />
+                        <Hash size={16} className="text-purple-300" />
                       </div>
-                    )}
-                    <div>
-                      <h2 className="font-bold text-xl text-white">{activeChat.name}</h2>
-                      <p className="text-xs text-purple-300 flex items-center gap-1.5">
-                        {activeChat.type === 'group' ? (
-                          <><Hash size={12} /> Channel</>
-                        ) : (
-                          <><MessageSquare size={12} /> Direct Message</>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  {selectedMessages.size > 0 && (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => {
-                          if (selectedMessages.size === messages.length) {
-                            setSelectedMessages(new Set());
-                          } else {
-                            setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean)));
-                          }
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg transition-all"
-                        title="Select All"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedMessages.size === messages.length && messages.length > 0}
-                          readOnly
-                          className="w-4 h-4 rounded border-2 border-purple-500 bg-purple-900/30 checked:bg-purple-600 cursor-pointer"
-                        />
-                        <span className="text-sm text-white font-medium">Delete from Me</span>
-                      </button>
-                      <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
-                      <button 
-                        onClick={() => {
-                          const myMessages = messages.filter(m => m.from === myId && m.id);
-                          setSelectedMessages(new Set(myMessages.map(m => m.id!)));
-                        }} 
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"
-                      >
-                        Select All
-                      </button>
-                      <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">
-                        Delete
-                      </button>
-                      <button onClick={() => { setSelectedMessages(new Set()); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">
-                        Cancel
-                      </button>
+                    )
+                  ) : (
+                    <div className="cursor-pointer" onClick={async()=>{
+                      const chatUser=dmUsers.find(u=>(u._id||u.id)===activeChat.id);
+                      if(!chatUser)return;
+                      const token=localStorage.getItem('token');
+                      const res=await fetch(`${SOCKET_URL}/api/user/${chatUser._id||chatUser.id}`,{headers:{Authorization:`Bearer ${token}`}});
+                      const data=await res.json();
+                      setViewingUser(data.user||chatUser);
+                      setProfileOpen(true);
+                    }}>
+                      <UserAvatar user={dmUsers.find(u=>(u._id||u.id)===activeChat.id)} size="sm" />
                     </div>
                   )}
+                  <div>
+                    <h2 className="font-bold text-[15px] text-white leading-none">
+                      {activeChat.type==='group' ? <span className="text-gray-300 font-normal mr-0.5">#</span> : null}{activeChat.name}
+                    </h2>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{activeChat.type==='group'?'Channel':'Direct Message'}</p>
+                  </div>
                 </div>
+                {selectedMessages.size>0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{selectedMessages.size} selected</span>
+                    <button onClick={()=>{const m=messages.filter(x=>x.from===myId&&x.id);setSelectedMessages(new Set(m.map(x=>x.id!)));}} className="px-2.5 py-1 bg-white/10 text-gray-300 rounded text-xs hover:bg-white/20 transition">Select Mine</button>
+                    <button onClick={deleteSelectedMessages} className="px-2.5 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition">Delete</button>
+                    <button onClick={()=>setSelectedMessages(new Set())} className="px-2.5 py-1 bg-white/10 text-gray-300 rounded text-xs hover:bg-white/20 transition">Cancel</button>
+                  </div>
+                )}
               </div>
 
               {/* SCROLLABLE MESSAGES */}
-              <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 scrollbar-hide min-h-0">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: '#522653 #1a1d21' }}>
                 {messages.map((m, idx) => {
                   // System messages display centered with quotes
                   if (m.isSystemMessage) {
@@ -1418,7 +1357,7 @@ socket.on("online users", (users: string[]) => {
                           <div className="flex flex-col gap-1">
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                           </div>
                           <div className="relative inline-block group">
                             <img
@@ -1443,7 +1382,7 @@ socket.on("online users", (users: string[]) => {
                           <div className="flex flex-col gap-1">
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                           </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
@@ -1486,7 +1425,7 @@ socket.on("online users", (users: string[]) => {
                           <div className="flex flex-col gap-1">
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                            <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                            <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                           </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
@@ -1544,7 +1483,7 @@ socket.on("online users", (users: string[]) => {
                             <div className="flex flex-col">
                               <div className="flex items-start justify-between gap-2 mb-1">
                                 <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                                <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                               </div>
                               <div className="text-white text-sm" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
                               {m.edited && <span className="text-[10px] text-gray-400 italic mt-1 block">(edited)</span>}
@@ -1642,8 +1581,8 @@ socket.on("online users", (users: string[]) => {
                 <div ref={bottomRef} />
               </div>
 
-              {/* FIXED INPUT FIELD */}
-              <div className="flex-shrink-0 p-5 border-t border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-md shadow-2xl">
+              {/* FIXED INPUT */}
+              <div className="flex-shrink-0 px-4 py-3 border-t border-white/10 bg-[#1a1d21]">
                 {activeChat.type === 'group' && removedFromGroups.has(activeChat.id) ? (
                   <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-center">
                     <p className="text-red-400 font-medium">You are not in the group. Admin removed you.</p>

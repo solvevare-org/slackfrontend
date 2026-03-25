@@ -17,11 +17,31 @@ interface WorkspaceSidebarProps {
 const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({ onVisibilityChange }) => {
   const [workspaces, setWorkspaces] = useState<IWorkspace[]>([]);
   const [user, setUser] = useState<any>(null);
+  const [currentWsId, setCurrentWsId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const raw = localStorage.getItem('user');
     if (raw) setUser(JSON.parse(raw));
+    try {
+      const ws = JSON.parse(localStorage.getItem('currentWorkspace') || 'null');
+      if (ws?.id) setCurrentWsId(ws.id);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const handleWsChange = () => {
+      try {
+        const ws = JSON.parse(localStorage.getItem('currentWorkspace') || 'null');
+        if (ws?.id) setCurrentWsId(ws.id);
+      } catch {}
+    };
+    window.addEventListener('workspace-changed', handleWsChange);
+    window.addEventListener('storage', handleWsChange);
+    return () => {
+      window.removeEventListener('workspace-changed', handleWsChange);
+      window.removeEventListener('storage', handleWsChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -47,14 +67,11 @@ const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({ onVisibilityChange 
 
   const openWorkspace = (ws: IWorkspace) => {
     try {
-      localStorage.setItem(
-        "currentWorkspace",
-        JSON.stringify({ id: ws._id, name: ws.name, image: ws.image })
-      );
+      localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image }));
     } catch {}
-
-    const namePart = encodeURIComponent(ws.name);
-    window.location.href = `/dashboard/${namePart}/${ws._id}`;
+    setCurrentWsId(ws._id);
+    window.dispatchEvent(new Event('workspace-changed'));
+    navigate('/dashboard');
   };
 
   const isAdmin = (user?.role || user?.Role || '').toString().toLowerCase() === 'admin';
@@ -69,23 +86,31 @@ const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({ onVisibilityChange 
   }
 
   return (
-    <div className="fixed left-0 top-0 h-full w-[60px] bg-gradient-to-b from-[#1a1d21] via-[#0f1115] to-[#1a1d21] flex flex-col items-center py-6 text-white shadow-2xl border-r border-purple-500/20">
-      <div className="flex flex-col items-center gap-3 w-full px-2">
-        {workspaces.map((ws) => (
+    <div className="fixed left-0 top-0 h-full w-[60px] bg-gradient-to-b from-[#1a1d21] via-[#0f1115] to-[#1a1d21] flex flex-col items-center py-5 text-white shadow-2xl border-r border-purple-500/20">
+      <div className="flex flex-col items-center gap-4 w-full px-2">
+        {workspaces.map((ws) => {
+          const isSelected = ws._id === currentWsId;
+          return (
           <div key={ws._id} className="relative group">
+            {/* Selected indicator */}
+            {isSelected && (
+              <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full" />
+            )}
             <button
               onClick={() => openWorkspace(ws)}
-              className="w-12 h-12 rounded-xl overflow-hidden transition-all duration-300 hover:rounded-lg hover:scale-110 shadow-lg hover:shadow-purple-500/50"
+              className={`w-12 h-12 overflow-hidden transition-all duration-300 shadow-lg ${
+                isSelected
+                  ? 'rounded-2xl ring-2 ring-white/40 scale-105'
+                  : 'rounded-xl hover:rounded-2xl hover:scale-110 hover:shadow-purple-500/50'
+              }`}
             >
               {ws.image ? (
-                <img
-                  src={imgUrl(ws.image)}
-                  alt={ws.name}
-                  className="w-full h-full object-cover"
-                />
+                <img src={imgUrl(ws.image)} alt={ws.name} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center font-bold text-white text-lg">
-                  {ws.name?.charAt(0)?.toUpperCase() || "?"}
+                <div className={`w-full h-full flex items-center justify-center font-bold text-white text-lg ${
+                  isSelected ? 'bg-purple-500' : 'bg-gradient-to-br from-purple-600 to-purple-800'
+                }`}>
+                  {ws.name?.charAt(0)?.toUpperCase() || '?'}
                 </div>
               )}
             </button>
@@ -93,7 +118,8 @@ const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({ onVisibilityChange 
               {ws.name}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {isAdmin && (
           <button

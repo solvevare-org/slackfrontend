@@ -49,6 +49,15 @@ const App = () => {
         />
 
         <Route
+          path="/dm"
+          element={
+            <ProtectedRoute>
+              <DirectMessage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/dm/:userId"
           element={
             <ProtectedRoute>

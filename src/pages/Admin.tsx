@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import AppLayout from "@/components/layout/AppLayout";
-import { Mail, UserPlus, Share2, Facebook, MessageCircle, Instagram, ArrowLeft, CheckCircle, FileSpreadsheet, ChevronDown, Trash2 } from "lucide-react";
+import { Mail, UserPlus, Share2, Facebook, MessageCircle, Instagram, ArrowLeft, CheckCircle, FileSpreadsheet, ChevronDown, Trash2, Edit } from "lucide-react";
 import { API_URL } from "@/lib/config";
 import ProfileSession from "@/components/layout/ProfileSession";
 import { imgUrl } from "@/lib/utils";
@@ -30,6 +30,10 @@ const Admin = () => {
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<any>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvPreviewOpen, setCsvPreviewOpen] = useState(false);
+  const [editingCsvIndex, setEditingCsvIndex] = useState<number | null>(null);
+  const [editingCsvEmail, setEditingCsvEmail] = useState("");
+  const [editingCsvRole, setEditingCsvRole] = useState("");
 
   const VALID_ROLES = ["Developer", "Sales", "User", "Admin"];
 
@@ -58,7 +62,8 @@ const Admin = () => {
       const newEmails = parseEmails(emailInput).filter(em => validateEmail(em) && !emails.includes(em));
       if (newEmails.length) setEmails(prev => [...prev, ...newEmails]);
       setEmailInput("");
-        setCsvEntries([]);
+      setCsvEntries([]);
+      setCsvPreviewOpen(false);
     }
   };
 
@@ -66,7 +71,8 @@ const Admin = () => {
     const newEmails = parseEmails(emailInput).filter(em => validateEmail(em) && !emails.includes(em));
     if (newEmails.length) setEmails(prev => [...prev, ...newEmails]);
     setEmailInput("");
-        setCsvEntries([]);
+    setCsvEntries([]);
+    setCsvPreviewOpen(false);
   };
 
   const removeEmail = (em: string) => setEmails(prev => prev.filter(e => e !== em));
@@ -90,8 +96,8 @@ const Admin = () => {
         const normalizedRole = VALID_ROLES.find(r => r.toLowerCase() === rl.toLowerCase());
         if (validateEmail(em) && normalizedRole) entries.push({ email: em, role: normalizedRole });
       }
-      if (entries.length === 0) { showToast("Upload Correct File", "error"); setCsvEntries([]); }
-      else { setCsvEntries(entries); showToast(entries.length+" user(s) loaded from file", "success"); }
+      if (entries.length === 0) { showToast("Upload Correct File", "error"); setCsvEntries([]); setCsvPreviewOpen(false); }
+      else { setCsvEntries(entries); setCsvPreviewOpen(true); showToast(entries.length+" user(s) loaded from file", "success"); }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = "";
@@ -142,8 +148,17 @@ const Admin = () => {
       );
 
       const failed = results.filter(r => !r.ok);
-      if (failed.length) {
-        setMessage(`Failed: ${failed.map(f => f.email).join(", ")}`);
+      const alreadyInWs = results.filter(r => !r.ok && r.msg?.toLowerCase().includes('already in your workspace'));
+      const alreadyAccepted = results.filter(r => !r.ok && r.msg?.toLowerCase().includes('already accepted'));
+
+      if (alreadyInWs.length > 0) {
+        showToast(`${alreadyInWs.map(f => f.email).join(", ")}: Invited user is Already in your Workspace`, "error");
+        setMessage(`Invited user is Already in your Workspace: ${alreadyInWs.map(f => f.email).join(", ")}`);
+        setMessageType("error");
+      } else if (failed.length) {
+        const firstFailed = failed[0];
+        showToast(firstFailed.msg || `Failed: ${failed.map(f => f.email).join(", ")}`, "error");
+        setMessage(firstFailed.msg || `Failed: ${failed.map(f => f.email).join(", ")}`);
         setMessageType("error");
       } else {
         setMessage("Invites sent successfully");
@@ -153,6 +168,7 @@ const Admin = () => {
         setEmails([]);
         setEmailInput("");
         setCsvEntries([]);
+        setCsvPreviewOpen(false);
         timeoutRef.current = setTimeout(() => {
           setShowPopup(false);
           navigate("/dashboard");
@@ -337,7 +353,7 @@ const Admin = () => {
   }, []);
 
   return (
-    <AppLayout>
+    <AppLayout scrollable>
       {toast && (<div className={`fixed top-6 right-6 z-[100] text-sm px-6 py-4 rounded-lg shadow-2xl border transition-all duration-300 animate-in fade-in slide-in-from-right-4 ${toastType === "success" ? "bg-gradient-to-r from-green-600 to-emerald-600 border-green-400 text-white font-medium shadow-green-500/20" : "bg-gradient-to-r from-red-600 to-rose-600 border-red-400 text-white font-medium shadow-red-500/20"}`}>{toast}</div>)}
       <div className="min-h-screen bg-[#0f1115] p-8">
         {showPopup && (
@@ -432,7 +448,7 @@ const Admin = () => {
                 </div>
                 <button onClick={handleInvite} disabled={loading} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition font-medium shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"><Mail size={18} />{loading ? "Sending..." : "Send Invite"}</button>
               </div>
-              {csvEntries.length > 0 && (<p className="text-xs text-green-400 font-medium">✓ {csvEntries.length} user(s) ready from CSV</p>)}
+              {csvEntries.length > 0 && (<p className="text-xs text-green-400 font-medium cursor-pointer hover:underline" onClick={() => setCsvPreviewOpen(true)}>✓ {csvEntries.length} user(s) ready from CSV - Click to preview</p>)}
 
               {message && (
                 <div
@@ -473,6 +489,138 @@ const Admin = () => {
             </div>
           </div>
         </div>
+
+          {/* CSV PREVIEW CARD */}
+          {csvEntries.length > 0 && csvPreviewOpen && (
+            <div className="max-w-4xl mx-auto mt-6">
+              <div className="bg-gradient-to-br from-[#1A1D21] to-[#0f1115] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+                <button 
+                  onClick={() => setCsvPreviewOpen(o => !o)} 
+                  className="w-full flex items-center justify-between p-8 text-left hover:bg-white/5 transition group"
+                >
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="relative">
+                      <div className="p-3 bg-gradient-to-br from-green-600 to-green-800 rounded-lg group-hover:shadow-lg group-hover:shadow-green-500/50 transition">
+                        <FileSpreadsheet className="text-green-300" size={24} />
+                      </div>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">CSV Preview <span className="text-sm text-gray-400 font-normal">({csvEntries.length} users)</span></h2>
+                      <p className="text-xs text-gray-500 mt-1">Review and edit before sending invites</p>
+                    </div>
+                  </div>
+                  <ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${csvPreviewOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {csvPreviewOpen && (
+                  <div className="px-8 pb-8 pt-4">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-white/10">
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">#</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Email</th>
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-gray-300">Role</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-gray-300">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvEntries.map((entry, idx) => (
+                            <tr key={idx} className="border-b border-white/5 hover:bg-white/5 transition">
+                              <td className="py-3 px-4 text-sm text-gray-400">{idx + 1}</td>
+                              <td className="py-3 px-4">
+                                {editingCsvIndex === idx ? (
+                                  <input
+                                    type="email"
+                                    value={editingCsvEmail}
+                                    onChange={(e) => setEditingCsvEmail(e.target.value)}
+                                    className="w-full px-3 py-1.5 bg-[#0f1115] border border-purple-500/50 rounded-lg text-white text-sm focus:outline-none focus:border-purple-600"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className="text-sm text-white">{entry.email}</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {editingCsvIndex === idx ? (
+                                  <select
+                                    value={editingCsvRole}
+                                    onChange={(e) => setEditingCsvRole(e.target.value)}
+                                    className="px-3 py-1.5 bg-[#0f1115] border border-purple-500/50 rounded-lg text-white text-sm focus:outline-none focus:border-purple-600"
+                                  >
+                                    {VALID_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                                  </select>
+                                ) : (
+                                  <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                                    entry.role === "Admin" ? "bg-red-600/20 text-red-400" :
+                                    entry.role === "Developer" ? "bg-blue-600/20 text-blue-400" :
+                                    entry.role === "Sales" ? "bg-yellow-600/20 text-yellow-400" :
+                                    "bg-purple-600/20 text-purple-400"
+                                  }`}>{entry.role}</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {editingCsvIndex === idx ? (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          if (validateEmail(editingCsvEmail)) {
+                                            setCsvEntries(prev => prev.map((e, i) => i === idx ? { email: editingCsvEmail, role: editingCsvRole } : e));
+                                            setEditingCsvIndex(null);
+                                            showToast("Entry updated", "success");
+                                          } else {
+                                            showToast("Invalid email", "error");
+                                          }
+                                        }}
+                                        className="text-xs px-3 py-1.5 bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600/40 transition font-medium"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={() => setEditingCsvIndex(null)}
+                                        className="text-xs px-3 py-1.5 bg-gray-600/20 text-gray-400 rounded-lg hover:bg-gray-600/40 transition font-medium"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingCsvIndex(idx);
+                                          setEditingCsvEmail(entry.email);
+                                          setEditingCsvRole(entry.role);
+                                        }}
+                                        className="text-xs px-3 py-1.5 bg-blue-600/20 text-blue-400 rounded-lg hover:bg-blue-600/40 transition font-medium"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setCsvEntries(prev => prev.filter((_, i) => i !== idx));
+                                          showToast("Entry removed", "success");
+                                          if (csvEntries.length === 1) setCsvPreviewOpen(false);
+                                        }}
+                                        className="text-xs px-2 py-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/40 transition flex items-center gap-1"
+                                      >
+                                        <Trash2 size={14} /> Delete
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {users.length > 0 && (<div className="max-w-4xl mx-auto"><div className="bg-gradient-to-br from-[#1A1D21] to-[#0f1115] border border-white/10 rounded-xl shadow-2xl mt-6 overflow-hidden"><button onClick={() => setMembersOpen(o => !o)} className="w-full flex items-center justify-between p-8 text-left hover:bg-white/5 transition group"><div className="flex items-center gap-4 flex-1"><div className="relative"><div className="p-3 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg group-hover:shadow-lg group-hover:shadow-purple-500/50 transition"><UserPlus className="text-purple-300" size={24} /></div></div><div><h2 className="text-2xl font-bold text-white">Workspace Members <span className="text-sm text-gray-400 font-normal">({users.length})</span></h2><p className="text-xs text-gray-500 mt-1">{workspace?.name || "Current Workspace"}</p></div></div><div className="flex items-center gap-4">{workspace?.image && <img src={imgUrl(workspace.image)} className="w-12 h-12 rounded-lg object-cover border border-white/20" />}<ChevronDown size={20} className={`text-gray-400 transition-transform duration-200 ${membersOpen ? 'rotate-180' : ''}`} /></div></button>{membersOpen && (<div className="px-8 pb-8 pt-4"><div className="space-y-3">{users.map(u => (<div key={u._id} className="flex items-center justify-between p-4 bg-[#0f1115]/50 rounded-lg hover:bg-white/5 transition border border-white/5 group"><div className="flex items-center gap-3 flex-1"><div className="relative">{u.avatar ? (<img src={imgUrl(u.avatar)} className="w-12 h-12 rounded-full object-cover border border-white/20" />) : (<div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold text-sm">{u.name?.charAt(0)?.toUpperCase()}</div>)}</div><div><p className="text-sm text-white font-semibold">{u.name}</p><p className="text-xs text-gray-400">{u.email}</p></div></div><div className="flex items-center gap-2"><span className={`text-xs px-3 py-1 rounded-full font-medium ${ u.Role === "Admin" ? "bg-red-600/20 text-red-400" : u.Role === "Developer" ? "bg-blue-600/20 text-blue-400" : u.Role === "Sales" ? "bg-yellow-600/20 text-yellow-400" : "bg-purple-600/20 text-purple-400"}`}>{u.Role}</span><button onClick={() => setSelectedUser(u)} className="text-xs px-3 py-1.5 bg-white/5 text-gray-300 rounded-lg hover:bg-blue-600/30 hover:text-blue-300 transition">View Profile</button><button onClick={() => handleRemoveUser(u._id)} disabled={removingUserId === u._id} className="text-xs px-2 py-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/40 transition disabled:opacity-50 flex items-center gap-1"><Trash2 size={14} /> {removingUserId === u._id ? '...' : 'Remove'}</button></div></div>))}</div></div>)}</div></div>)}
         </div>
           {selectedUser && (

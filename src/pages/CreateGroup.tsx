@@ -142,7 +142,7 @@ const CreateGroup = () => {
   };
 
   return (
-    <AppLayout>
+    <AppLayout scrollable>
       <div className="min-h-screen bg-[#0f1115] p-8">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center gap-4 mb-8">

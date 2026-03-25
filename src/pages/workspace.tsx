@@ -61,22 +61,16 @@ const Workspace = () => {
         const workspaces = data.workspaces || [];
         setWorkspaces(workspaces);
 
-        // If user only belongs to one workspace, auto-select it and go to dashboard
-        if (workspaces.length === 1) {
-          const ws = workspaces[0];
+        // Auto-select only if coming from login (no current workspace set)
+        const alreadyHasWs = localStorage.getItem('currentWorkspace');
+        if (workspaces.length >= 1 && !alreadyHasWs) {
+          const lastId = localStorage.getItem('lastSelectedWorkspaceId');
+          const ws = workspaces.find((w: any) => w._id === lastId) || workspaces[0];
           try {
-            localStorage.setItem(
-              "currentWorkspace",
-              JSON.stringify({
-                id: ws._id,
-                name: ws.name,
-                image: ws.image,
-                members: ws.members || [],
-              })
-            );
-            localStorage.setItem("lastSelectedWorkspaceId", ws._id);
+            localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] }));
+            localStorage.setItem('lastSelectedWorkspaceId', ws._id);
           } catch (e) {}
-          navigate("/dashboard");
+          navigate('/dashboard');
         }
       } catch (e) {
         console.error("Workspaces fetch error", e);
@@ -132,6 +126,7 @@ const Workspace = () => {
         setName("");
         setImage(null);
         setWorkspaces((prev) => [...prev, ws]);
+        window.dispatchEvent(new Event('workspace-changed'));
         navigate("/dashboard");
       }
     } catch (e) {
@@ -142,11 +137,19 @@ const Workspace = () => {
   };
 
   const openWorkspace = (ws: any) => {
+    const prev = (() => { try { return JSON.parse(localStorage.getItem('currentWorkspace') || 'null'); } catch { return null; } })();
+    const isSame = prev?.id === ws._id;
     try { 
       localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] })); 
       localStorage.setItem('lastSelectedWorkspaceId', ws._id);
     } catch (e) {}
-    navigate('/dashboard');
+    if (isSame) {
+      navigate('/dashboard');
+    } else {
+      // Workspace changed - dispatch event so Dashboard reloads data without page refresh
+      try { window.dispatchEvent(new Event('workspace-changed')); } catch (e) {}
+      navigate('/dashboard');
+    }
   };
 
   const deleteWorkspace = async (wsId: string, e: React.MouseEvent) => {

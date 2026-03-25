@@ -1,4 +1,4 @@
-import { Search, X, Plus, Building2, Sparkles, Hash, User, ChevronDown, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
+import { Search, X, Hash, User, ArrowLeft, ArrowRight, RotateCw } from 'lucide-react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '@/lib/config';
@@ -156,76 +156,7 @@ const Header: React.FC = () => {
       <div className="text-white py-3 px-3 flex items-center justify-between">
 
         <div className="flex items-center gap-4 relative">
-          <button
-            onClick={() => setShowWorkspaceMenu((s) => !s)}
-            className="flex items-center gap-3 px-4 py-2 hover:bg-purple-600/20 rounded-xl transition"
-          >
-            {/* {currentWorkspace?.image ? (
-              <img
-                src={imgUrl(currentWorkspace.image)}
-                alt={currentWorkspace.name}
-                className="w-10 h-10 rounded-lg object-cover"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFullscreenImage(imgUrl(currentWorkspace.image));
-                }}
-              />
-            ) : (
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-purple-800 rounded-lg flex items-center justify-center text-white font-bold">
-                {currentWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
-              </div>
-            )} */}
-            <span className="font-semibold text-white">{currentWorkspace?.name || 'Workspace'}</span>
-            <ChevronDown size={16} className="text-white" />
-          </button>
-
-          {showWorkspaceMenu && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setShowWorkspaceMenu(false)} />
-              <div className="absolute top-full left-0 w-52 bg-gradient-to-b from-[#1a1d21] to-[#0f1115] border border-purple-500/30 rounded-xl shadow-2xl z-30 overflow-hidden">
-                <button
-                  onClick={() => {
-                    setProfileOpen(true);
-                    setShowWorkspaceMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
-                >
-                  Profile
-                </button>
-                {isAdmin && (
-                  <>
-                    <button
-                      onClick={() => {
-                        navigate('/admin');
-                        setShowWorkspaceMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
-                    >
-                      Invite Member
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigate('/create-channel');
-                        setShowWorkspaceMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-purple-600/10 text-white transition-colors"
-                    >
-                      Create Channel
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => {
-                    handleLogout();
-                    setShowWorkspaceMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-3 hover:bg-red-600/10 text-red-400 transition-colors"
-                >
-                  Sign Out
-                </button>
-              </div>
-            </>
-          )}
+          <span className="font-semibold text-white px-4 py-2">{currentWorkspace?.name || 'Workspace'}</span>
         </div>
         
         <div className="flex-1 max-w-2xl mx-8 relative">
@@ -308,7 +239,7 @@ const Header: React.FC = () => {
       </div>
 
       {/* profile session popup */}
-      <ProfileSession isOpen={profileOpen} onClose={() => setProfileOpen(false)} user={user} isOwnProfile={true} />
+      {/* <ProfileSession isOpen={profileOpen} onClose={() => setProfileOpen(false)} user={user} isOwnProfile={true} /> */}
 
     </>
   );

@@ -15,6 +15,7 @@ const Signup = () => {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [alreadyAccepted, setAlreadyAccepted] = useState(false)
 
   useEffect(() => {
     if (!token) return
@@ -41,7 +42,10 @@ const Signup = () => {
         })
         const data = await res.json()
         if (!res.ok) {
-          // not fatal: leave signup flow
+          if (data?.msg?.toLowerCase().includes('already')) {
+            setAlreadyAccepted(true)
+            return
+          }
           return
         }
         // success: if workspace info returned, save currentWorkspace and navigate into it
@@ -90,6 +94,23 @@ const Signup = () => {
   }
 
   if (!token) return <div className="p-8">Invalid invite link.</div>
+
+  // Already accepted invite screen
+  if (alreadyAccepted) return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] p-6">
+      <div className="bg-gradient-to-br from-[#1a1d21]/90 to-[#0f1115]/90 backdrop-blur-xl border border-yellow-500/30 p-10 rounded-2xl shadow-2xl w-full max-w-md text-center">
+        <div className="w-16 h-16 mx-auto mb-4 bg-yellow-500/10 rounded-full flex items-center justify-center">
+          <CheckCircle className="w-8 h-8 text-yellow-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">Already Accepted</h2>
+        <p className="text-yellow-300 font-medium mb-2">You are Already Accepted invite in this Workspace</p>
+        <p className="text-gray-400 text-sm mb-6">You are already a member of this workspace.</p>
+        <Button onClick={() => navigate('/dashboard')} className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-8">
+          Go to Dashboard
+        </Button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] p-6">

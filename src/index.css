@@ -73,13 +73,14 @@
 
 html, body, #root {
   height: 100%;
-  margin: 0; /* reset default browser margin */
-
-body {
-  /* min-height: 100vh; */
   margin: 0;
   padding: 0;
-  background: rgba(15, 10, 10, 0.938); }
+  overflow: hidden;
+}
+
+body {
+  background: rgba(15, 10, 10, 0.938);
+}
 
 /* Hide scrollbar */
 .scrollbar-hide::-webkit-scrollbar {
@@ -279,5 +280,4 @@ body {
   color: #a78bfa;
   display: block;
   margin-bottom: 4px;
-}
 }

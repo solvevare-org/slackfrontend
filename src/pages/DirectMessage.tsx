@@ -79,10 +79,21 @@ const DirectMessage = () => {
     const d = new Date(iso);
     const now = new Date();
     if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const y = new Date(now);
-    y.setDate(now.getDate() - 1);
+    const y = new Date(now); y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'Yesterday';
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const formatMsgTime = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    if (diffMs < 24 * 60 * 60 * 1000) return time;
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
   };
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -491,138 +502,88 @@ const DirectMessage = () => {
   /* ================= UI ================= */
   return (
     <AppLayout>
-      <div className="flex h-screen bg-gradient-to-br from-[#0a0b0d] via-[#1a1d21] to-[#0f1115] text-white">
+      <div className="flex h-full overflow-hidden text-white" style={{background:'#1a1d21'}}>
 
-        {/* SIDEBAR */}
-        <aside className="w-[280px] bg-gradient-to-b from-[#1A1D21]/95 to-[#141619]/95 backdrop-blur-xl border-r border-purple-500/30 shadow-2xl flex flex-col overflow-hidden scrollbar-hide">
-          <div className="p-4 border-b border-purple-500/20 sticky top-0 z-20 bg-[#1A1D21]/95">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-purple-500/20 rounded-lg">
-                <svg xmlns="https://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              </div>
-              <h3 className="text-sm font-bold text-white">Direct Messages</h3>
-            </div>
+        {/* ── SIDEBAR ── */}
+        <aside className="w-[260px] flex-shrink-0 flex flex-col h-full overflow-hidden" style={{background:'#19171d', borderRight:'1px solid rgba(255,255,255,0.08)'}}>
+          <div className="flex-shrink-0 px-3 pt-3 pb-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-2 mb-1">Direct Messages</p>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
-            <div className="space-y-2">
-              {dmUsers.map((u) => {
-                const isOnline = onlineUsers.includes(u._id || u.id || '');
-                const hasUnread = unreadCounts[u._id || u.id || ''] > 0;
-                const preview = dmPreviews[u._id || u.id || ''];
-                return (
-                  <div
-                    key={u._id}
-                    onClick={() => { setActiveDM(u); try { localStorage.setItem('activeDM', JSON.stringify(u)) } catch (e) {} }}
-                    className={`flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all group ${
-                      activeDM?._id === u._id
-                        ? 'bg-gradient-to-r from-purple-600/30 to-purple-500/20 border border-purple-500/40 shadow-lg shadow-purple-900/20'
-                        : 'hover:bg-purple-500/10 border border-transparent hover:border-purple-500/20'
-                    }`}
-                  >
-                    <div className="relative" onClick={async (e) => { 
-                      e.stopPropagation(); 
-                      const token = localStorage.getItem('token');
-                      const res = await fetch(`${SOCKET_URL}/api/user/${u._id || u.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                      const data = await res.json();
-                      setViewingUser(data.user || u); 
-                      setProfileOpen(true); 
-                    }}>
-                      <UserAvatar user={u} size="sm" />
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#1A1D21] ${
-                          isOnline ? "bg-green-500 shadow-lg shadow-green-500/50" : "bg-gray-500"
-                        }`}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-200 group-hover:text-white transition truncate">{u.name}</span>
-                        {preview && (
-                          <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                            {formatDate(preview.createdAt)}
-                          </span>
-                        )}
-                      </div>
-                      {preview && (
-                        <p className="text-xs text-gray-400 truncate">
-                          {preview.from === myId
-                            ? `You: ${hideUrls((preview.content || '').replace(/<[^>]+>/g, ''))}`
-                            : hideUrls((preview.content || '').replace(/<[^>]+>/g, ''))}
-                        </p>
-                      )}
-                    </div>
-                    {hasUnread && (
-                      <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-semibold shadow-lg">
-                        {unreadCounts[u._id || u.id || '']}
-                      </span>
-                    )}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-1" style={{scrollbarWidth:'none'}}>
+            {dmUsers.map((u) => {
+              const isOnline = onlineUsers.includes(u._id||u.id||'');
+              const hasUnread = unreadCounts[u._id||u.id||'']>0;
+              const preview = dmPreviews[u._id||u.id||''];
+              return (
+                <div
+                  key={u._id}
+                  onClick={() => { setActiveDM(u); try{localStorage.setItem('activeDM',JSON.stringify(u))}catch(e){} }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors group ${
+                    activeDM?._id===u._id ? 'bg-[#522653] text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <div className="relative flex-shrink-0" onClick={async(e)=>{e.stopPropagation();const token=localStorage.getItem('token');const res=await fetch(`${SOCKET_URL}/api/user/${u._id||u.id}`,{headers:{Authorization:`Bearer ${token}`}});const data=await res.json();setViewingUser(data.user||u);setProfileOpen(true);}}>
+                    <UserAvatar user={u} size="sm" />
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#19171d] ${isOnline?'bg-green-500':'bg-gray-600'}`} />
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm truncate">{u.name}</span>
+                      {preview && <span className="text-[10px] text-gray-500 ml-1 flex-shrink-0">{formatDate(preview.createdAt)}</span>}
+                    </div>
+                    {preview && <p className="text-[11px] text-gray-500 truncate">{preview.from===myId?`You: ${hideUrls((preview.content||'').replace(/<[^>]+>/g,''))}`:hideUrls((preview.content||'').replace(/<[^>]+>/g,''))}</p>}
+                  </div>
+                  {hasUnread && <span className="text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center flex-shrink-0">{unreadCounts[u._id||u.id||'']}</span>}
+                </div>
+              );
+            })}
           </div>
         </aside>
 
-        {/* MAIN */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#0f1115]">
+        {/* ── MAIN ── */}
+        <main className="flex-1 flex flex-col h-full overflow-hidden" style={{background:'#1a1d21'}}>
           {!activeDM ? (
-            <div className="flex flex-col items-center justify-center h-full">
-              <h1 className="text-2xl font-semibold mb-4">
-                Welcome Back {user?.name}
-              </h1>
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-5 mx-auto shadow-xl">
+                  <span className="text-[#4A154B] font-bold text-4xl">SV</span>
+                </div>
+                <h1 className="text-2xl font-bold text-white mb-2">Welcome back, {user?.name}!</h1>
+                <p className="text-gray-400 text-sm">Select a conversation to start messaging</p>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col h-full">
-              {/* FIXED HEADER */}
-              <div className="flex-shrink-0 p-5 border-b border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/90 to-[#0f1115]/90 backdrop-blur-md shadow-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="cursor-pointer" onClick={async () => {
-                      const token = localStorage.getItem('token');
-                      const res = await fetch(`${SOCKET_URL}/api/user/${activeDM._id || activeDM.id}`, { headers: { Authorization: `Bearer ${token}` } });
-                      const data = await res.json();
-                      setViewingUser(data.user || activeDM);
-                      setProfileOpen(true);
-                    }}>
-                      <UserAvatar user={activeDM} size="md" />
-                    </div>
-                    <div>
-                      <h2 className="font-bold text-lg text-white">{activeDM.name}</h2>
-                      <p className="text-xs text-purple-300">Direct Message</p>
-                    </div>
+            <div className="flex flex-col h-full overflow-hidden">
+
+              {/* ── CHAT HEADER ── */}
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5" style={{borderBottom:'1px solid rgba(255,255,255,0.08)',background:'#1a1d21'}}>
+                <div className="flex items-center gap-3">
+                  <div className="cursor-pointer" onClick={async()=>{
+                    const token=localStorage.getItem('token');
+                    const res=await fetch(`${SOCKET_URL}/api/user/${activeDM._id||activeDM.id}`,{headers:{Authorization:`Bearer ${token}`}});
+                    const data=await res.json();
+                    setViewingUser(data.user||activeDM);
+                    setProfileOpen(true);
+                  }}>
+                    <UserAvatar user={activeDM} size="sm" />
                   </div>
-                  {selectedMessages.size > 0 && (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => {
-                          if (selectedMessages.size === messages.length) {
-                            setSelectedMessages(new Set());
-                          } else {
-                            setSelectedMessages(new Set(messages.map(m => m.id || '').filter(Boolean)));
-                          }
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-lg transition-all"
-                        title="Select All"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedMessages.size === messages.length && messages.length > 0}
-                          readOnly
-                          className="w-4 h-4 rounded border-2 border-purple-500 bg-transparent checked:bg-purple-600 cursor-pointer"
-                        />
-                        <span className="text-sm text-white font-medium">Select All</span>
-                      </button>
-                      <span className="text-sm text-purple-300 font-medium">{selectedMessages.size} selected</span>
-                      <button onClick={deleteSelectedMessages} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">Delete</button>
-                      <button onClick={() => { setSelectedMessages(new Set()); }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium">Cancel</button>
-                    </div>
-                  )}
+                  <div>
+                    <h2 className="font-bold text-[15px] text-white leading-none">{activeDM.name}</h2>
+                    <p className="text-[11px] text-gray-500 mt-0.5">Direct Message</p>
+                  </div>
                 </div>
+                {selectedMessages.size>0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{selectedMessages.size} selected</span>
+                    <button onClick={()=>{const m=messages.filter(x=>x.from===myId&&x.id);setSelectedMessages(new Set(m.map(x=>x.id!)));}} className="px-2.5 py-1 bg-white/10 text-gray-300 rounded text-xs hover:bg-white/20 transition">Select Mine</button>
+                    <button onClick={deleteSelectedMessages} className="px-2.5 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition">Delete</button>
+                    <button onClick={()=>setSelectedMessages(new Set())} className="px-2.5 py-1 bg-white/10 text-gray-300 rounded text-xs hover:bg-white/20 transition">Cancel</button>
+                  </div>
+                )}
               </div>
 
               {/* SCROLLABLE MESSAGES */}
-              <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 scrollbar-hide min-h-0">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 min-h-0" style={{scrollbarWidth:'thin',scrollbarColor:'#522653 #1a1d21'}}>
                 {messages.map((m, idx) => {
                   const isImage = m.file && ((m.file?.mimetype && m.file?.mimetype.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test((m.file?.filename || m.file?.url || '')));
                   const isMine = m.from === myId;
@@ -725,7 +686,7 @@ const DirectMessage = () => {
                           <div className="flex flex-col gap-1">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                             </div>
                             <div className="relative inline-block group">
                               <img src={imgUrl(m.file!.url)} alt="image" className="w-[360px] h-[290px] object-cover cursor-pointer rounded-2xl transition-all duration-200 transform group-hover:scale-[1.02]" onClick={() => window.open(imgUrl(m.file!.url), '_blank')} />
@@ -742,7 +703,7 @@ const DirectMessage = () => {
                           <div className="flex flex-col gap-1">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                             </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
@@ -774,7 +735,7 @@ const DirectMessage = () => {
                           <div className="flex flex-col gap-1">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                              <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                              <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                             </div>
                           <div className="w-[280px] rounded-xl overflow-hidden border border-white/10 relative">
                             {downloadingFiles[m.id || ''] ? (
@@ -825,7 +786,7 @@ const DirectMessage = () => {
                               <div className="flex flex-col">
                                 <div className="flex items-baseline gap-2 mb-1">
                                   <span className="font-bold text-white text-sm">{m.fromName || 'Unknown'}</span>
-                                  <span className="text-xs text-gray-400">{m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                  <span className="text-xs text-gray-400">{m.createdAt ? formatMsgTime(m.createdAt) : ''}</span>
                                 </div>
                                 <div className="text-white text-sm" dangerouslySetInnerHTML={{ __html: hideUrls(m.content) || '' }} />
                                 {m.edited && <div className="text-xs text-gray-400 italic mt-1">(edited)</div>}
@@ -924,8 +885,8 @@ const DirectMessage = () => {
                 )}
               </div>
 
-              {/* FIXED INPUT FIELD */}
-              <div className="flex-shrink-0 p-5 border-t border-purple-500/20 bg-gradient-to-r from-[#1a1d21]/95 to-[#0f1115]/95 backdrop-blur-md shadow-2xl">
+              {/* FIXED INPUT */}
+              <div className="flex-shrink-0 px-4 py-3" style={{borderTop:'1px solid rgba(255,255,255,0.08)',background:'#1a1d21'}}>
                 {uploadingFiles && (
                   <div className="mb-3 p-4 bg-green-900/20 rounded-xl border border-green-500/30">
                     <div className="flex items-center justify-between">

@@ -54,6 +54,7 @@ const Sidebar: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [unread, setUnread] = useState<number>(0);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [viewingUser, setViewingUser] = useState<any>(null);
@@ -223,7 +224,7 @@ const Sidebar: React.FC = () => {
             icon={<MessageSquare size={22} />}
             label="DMs"
             active={location.pathname.includes('/dm')}
-            onClick={() => navigate("/dm/id")}
+            onClick={() => navigate("/dm")}
           />
 
           {/* ✅ ADMIN ONLY BUTTON
@@ -254,114 +255,87 @@ const Sidebar: React.FC = () => {
               </span>
             )}
 
-            {/* Activity modal (centered) */}
+            {/* Activity Panel - right side slide-in like ProfileSession */}
             {activityOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn">
-                <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setActivityOpen(false)} />
-                <div className="relative w-[580px] max-h-[75vh] bg-gradient-to-br from-[#1a1d21]/95 via-[#0f1115]/98 to-[#1a1d21]/95 backdrop-blur-xl border border-purple-500/40 rounded-2xl shadow-2xl overflow-hidden animate-scaleIn">
+              <>
+                <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setActivityOpen(false)} />
+                <div className="fixed top-0 right-0 h-full w-[380px] z-50 flex flex-col" style={{background:'#1a1d21', borderLeft:'1px solid rgba(255,255,255,0.1)'}}>
+                  
                   {/* Header */}
-                  <div className="flex items-center justify-between p-5 border-b border-purple-500/30 bg-gradient-to-r from-purple-600/20 to-pink-600/20">
+                  <div className="flex-shrink-0 flex items-center justify-between px-6 py-5" style={{borderBottom:'1px solid rgba(255,255,255,0.1)', background:'rgba(147,51,234,0.08)'}}>
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-500/20 rounded-lg">
-                        <Bell className="w-5 h-5 text-purple-400" />
-                      </div>
+                      <Bell className="w-5 h-5 text-purple-400" />
                       <div>
-                        <h3 className="text-lg font-bold text-white">Activity Center</h3>
-                        <p className="text-xs text-purple-300">{activities.length} notification{activities.length !== 1 ? 's' : ''}</p>
+                        <h3 className="text-base font-bold text-white">Activity</h3>
+                        <p className="text-xs text-gray-400">{activities.length} notification{activities.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
                       {activities.length > 0 && (
-                        <button onClick={clearAll} className="flex items-center gap-2 px-4 py-2 bg-red-600/80 hover:bg-red-600 rounded-lg text-white transition-all hover:scale-105 shadow-lg text-sm font-medium">
-                          <Trash2 size={14} />
-                          Clear All
+                        <button onClick={clearAll} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-xs font-medium transition">
+                          <Trash2 size={13} /> Clear All
                         </button>
                       )}
-                      <button onClick={() => setActivityOpen(false)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all hover:scale-105">
-                        <X size={18} className="text-white" />
+                      <button onClick={() => setActivityOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition text-gray-400 hover:text-white">
+                        <X size={18} />
                       </button>
                     </div>
                   </div>
-                  
+
                   {/* Content */}
-                  <div className="overflow-y-auto max-h-[calc(75vh-80px)]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#9333ea #1a1d21' }}>
+                  <div className="flex-1 overflow-y-auto px-4 py-4" style={{scrollbarWidth:'thin', scrollbarColor:'#522653 #1a1d21'}}>
                     {activities.length === 0 ? (
-                      <div className="p-12 text-center">
-                        <div className="w-20 h-20 mx-auto mb-4 bg-purple-500/10 rounded-full flex items-center justify-center">
-                          <Sparkles className="w-10 h-10 text-purple-400" />
+                      <div className="flex flex-col items-center justify-center h-full text-center py-16">
+                        <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{background:'rgba(147,51,234,0.1)'}}>
+                          <Bell className="w-8 h-8 text-purple-400" />
                         </div>
-                        <p className="text-gray-400 text-sm font-medium">No notifications yet</p>
-                        <p className="text-gray-500 text-xs mt-2">You're all caught up!</p>
+                        <p className="text-gray-300 font-medium">No notifications yet</p>
+                        <p className="text-gray-500 text-sm mt-1">You're all caught up!</p>
                       </div>
                     ) : (
-                      <div className="p-3 space-y-2">
+                      <div className="space-y-1">
                         {activities.map((it) => (
-                          <div 
-                            key={it.id} 
-                            onClick={() => handleNotificationClick(it)} 
-                            className="group flex items-start gap-4 p-4 hover:bg-purple-600/15 cursor-pointer border border-transparent hover:border-purple-500/30 rounded-xl transition-all duration-200 hover:scale-[1.02] bg-[#0a0b0d]/30"
+                          <div
+                            key={it.id}
+                            onClick={() => handleNotificationClick(it)}
+                            className="flex items-start gap-3 px-3 py-3 rounded-lg cursor-pointer hover:bg-white/5 transition group"
                           >
+                            {/* Avatar */}
                             <div className="relative flex-shrink-0" onClick={(e) => handleAvatarClick(e, it)}>
-                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-white font-bold shadow-lg hover:scale-110 transition-transform overflow-hidden cursor-pointer">
+                              <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white font-bold" style={{background:'#522653'}}>
                                 {it.type === 'private' ? (
-                                  it.fromAvatar ? (
-                                    <img src={imgUrl(it.fromAvatar)} alt="" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <User size={20} />
-                                  )
+                                  it.fromAvatar ? <img src={imgUrl(it.fromAvatar)} alt="" className="w-full h-full object-cover" /> : <User size={18} />
                                 ) : it.type === 'group' ? (
-                                  it.groupPicture ? (
-                                    <img src={imgUrl(it.groupPicture)} alt="" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <Hash size={20} />
-                                  )
-                                ) : (
-                                  <Bell size={20} />
-                                )}
+                                  it.groupPicture ? <img src={imgUrl(it.groupPicture)} alt="" className="w-full h-full object-cover" /> : <Hash size={18} />
+                                ) : <Bell size={18} />}
                               </div>
                               {it.file?.filename && (
-                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-pink-600 rounded-full flex items-center justify-center shadow-lg">
-                                  <Paperclip size={12} className="text-white" />
+                                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-pink-600 rounded-full flex items-center justify-center">
+                                  <Paperclip size={10} className="text-white" />
                                 </div>
                               )}
                             </div>
+
+                            {/* Content */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
-                                <div className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors">
-                                  {it.type === 'private' ? (it.fromName || it.title || 'Direct message') : (it.groupName || it.title || 'Channel message')}
-                                </div>
-                                <div className="text-[10px] text-gray-500 whitespace-nowrap">
-                                  {(() => {
-                                    const now = Date.now();
-                                    const diff = now - (it.ts || now);
-                                    const mins = Math.floor(diff / 60000);
-                                    const hrs = Math.floor(diff / 3600000);
-                                    if (mins < 1) return 'Just now';
-                                    if (mins < 60) return `${mins}m ago`;
-                                    if (hrs < 24) return `${hrs}h ago`;
-                                    return new Date(it.ts || now).toLocaleDateString();
-                                  })()}
-                                </div>
-                              </div>
-                              <div className="text-xs text-gray-400 mt-1.5 line-clamp-2">
-                                {it.file?.filename ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <Paperclip size={12} className="text-purple-400" />
-                                    <span className="font-medium text-purple-300">{it.file.filename}</span>
-                                  </span>
-                                ) : (
-                                  (it.message || 'New notification').replace(/<[^>]*>/g, '')
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                                  it.type === 'private' 
-                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
-                                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                }`}>
-                                  {it.type === 'private' ? 'Direct Message' : 'Channel Message'}
+                                <span className="text-sm font-semibold text-white truncate">
+                                  {it.type === 'private' ? (it.fromName || 'Direct message') : (it.groupName || 'Channel')}
+                                </span>
+                                <span className="text-[10px] text-gray-500 whitespace-nowrap flex-shrink-0">
+                                  {(() => { const diff = Date.now()-(it.ts||Date.now()); const m=Math.floor(diff/60000); const h=Math.floor(diff/3600000); if(m<1)return'Just now'; if(m<60)return`${m}m`; if(h<24)return`${h}h`; return new Date(it.ts||Date.now()).toLocaleDateString(); })()}
                                 </span>
                               </div>
+                              <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                                {it.file?.filename ? (
+                                  <span className="flex items-center gap-1 text-purple-300"><Paperclip size={11} />{it.file.filename}</span>
+                                ) : (it.message||'New notification').replace(/<[^>]*>/g,'')}
+                              </p>
+                              <span className={`inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded-full ${
+                                it.type==='private' ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'
+                              }`}>
+                                {it.type==='private' ? 'DM' : 'Channel'}
+                              </span>
                             </div>
                           </div>
                         ))}
@@ -369,7 +343,7 @@ const Sidebar: React.FC = () => {
                     )}
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
@@ -379,9 +353,65 @@ const Sidebar: React.FC = () => {
           /> */}
         </div>
 
+        {/* PLUS MENU - Admin only, above profile */}
+        {isAdmin && (
+          <div className="w-full px-3 pb-2 relative">
+            <button
+              onClick={() => setShowPlusMenu(s => !s)}
+              className={`w-full flex items-center justify-center py-2.5 rounded-xl transition-all duration-200 ${
+                showPlusMenu
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50'
+                  : 'bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 hover:text-white border border-purple-500/30 hover:border-purple-500/60'
+              }`}
+              title="Admin Actions"
+            >
+              <Plus size={18} className={`transition-transform duration-200 ${showPlusMenu ? 'rotate-45' : ''}`} />
+            </button>
+            {showPlusMenu && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setShowPlusMenu(false)} />
+                <div className="fixed bottom-20 left-20 w-56 z-30 rounded-xl overflow-hidden shadow-2xl" style={{background:'#1e1f24', border:'1px solid rgba(147,51,234,0.3)'}}>
+                  <div className="px-3 py-2 border-b" style={{borderColor:'rgba(255,255,255,0.06)'}}>
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Admin Actions</p>
+                  </div>
+                  <button
+                    onClick={() => { navigate('/admin'); setShowPlusMenu(false); }}
+                    className="w-full text-left px-3 py-3 hover:bg-purple-600/15 text-white text-sm transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{background:'rgba(147,51,234,0.2)'}}>
+                      <User size={15} className="text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm text-white">Invite Member</p>
+                      <p className="text-[11px] text-gray-500">Add people to workspace</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { navigate('/create-channel'); setShowPlusMenu(false); }}
+                    className="w-full text-left px-3 py-3 hover:bg-purple-600/15 text-white text-sm transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{background:'rgba(147,51,234,0.2)'}}>
+                      <Hash size={15} className="text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm text-white">Create Channel</p>
+                      <p className="text-[11px] text-gray-500">New channel for your team</p>
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* PROFILE - Fixed at bottom */}
         <div className="w-full pt-4 border-t border-purple-500/30">
-          <div className="text-center cursor-pointer px-2" onClick={() => { setViewingUser(null); setProfileOpen(true); }}>
+          <div className="text-center cursor-pointer px-2" onClick={() => {
+            const raw = localStorage.getItem('user');
+            const u = raw ? JSON.parse(raw) : user;
+            setViewingUser(u);
+            setProfileOpen(true);
+          }}>
             {user?.avatar ? (
               <img src={imgUrl(user.avatar)} alt="Profile" className="w-14 h-14 rounded-full object-cover hover:ring-2 hover:ring-purple-400 transition-all mx-auto shadow-lg" />
             ) : (
@@ -398,7 +428,7 @@ const Sidebar: React.FC = () => {
       </div>
 
       {/* Profile Session */}
-      <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser || user} isOwnProfile={!viewingUser} />
+      <ProfileSession isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewingUser(null); }} user={viewingUser} isOwnProfile={!viewingUser || viewingUser?._id === user?._id || viewingUser?.id === user?.id} />
       <GroupProfileSession isOpen={groupProfileOpen} onClose={() => { setGroupProfileOpen(false); setViewingGroupId(null); }} groupId={viewingGroupId} />
     </div>
   );

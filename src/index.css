@@ -136,6 +136,13 @@ body {
   }
 }
 
+@keyframes wsWelcome {
+  0%   { opacity: 0; transform: translateX(120px) scale(0.9); }
+  12%  { opacity: 1; transform: translateX(0) scale(1); }
+  75%  { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(40px) scale(0.95); }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }

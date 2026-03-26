@@ -87,6 +87,7 @@ const Login = () => {
         if (wss.length > 0) { const ws = wss[0]; localStorage.setItem('currentWorkspace', JSON.stringify({ id: ws._id, name: ws.name, image: ws.image, members: ws.members || [] })); localStorage.setItem('lastSelectedWorkspaceId', ws._id); }
       } catch {}
       sessionStorage.removeItem('hasSeenWelcome');
+      sessionStorage.setItem('showLoginWelcome', '1');
       navigate('/dashboard');
     } catch { setError('Server error'); } finally { setIsLoading(false); }
   };

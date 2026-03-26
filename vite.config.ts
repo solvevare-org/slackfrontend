@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const port = parseInt(env.VITE_PORT || '6007', 10)
@@ -21,6 +20,22 @@ export default defineConfig(({ mode }) => {
         "localhost",
         ".localhost",
       ],
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'ui-vendor': ['lucide-react', '@radix-ui/react-avatar', '@radix-ui/react-dropdown-menu'],
+            'editor': ['@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-link', '@tiptap/extension-underline'],
+            'socket': ['socket.io-client'],
+          }
+        }
+      },
+      chunkSizeWarningLimit: 1000,
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-router-dom', 'socket.io-client', 'lucide-react'],
     },
   }
 })
